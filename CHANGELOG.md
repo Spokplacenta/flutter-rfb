@@ -39,3 +39,7 @@
 ## 0.6.2
 
 - Update `dart_rfb` to version 0.7.0 (refactored read loop)
+
+## 0.7.0
+
+- Use `dart_rfb` 0.9.0 with ZRLE support and widget-side logging

@@ -226,6 +226,9 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                         print('Error updating frame buffer: $error'),
                     (final _) {},
                   ),
+                  zrle: () async => _logger.warning(
+                    'ZRLE rectangle received but not decoded upstream',
+                  ),
                   unsupported: (final ByteData bytes) async {},
                 );
               }
