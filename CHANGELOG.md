@@ -48,3 +48,11 @@
 
 - Fix `Unsupported operation: Infinity or NaN toInt` error in gesture detector
 - Add defensive checks for Infinity/NaN values in coordinate calculations
+
+## 0.7.2
+
+- Fix mouse pointer coordinate mapping to correctly handle different aspect ratios
+- Fix coordinate calculation to account for BoxFit.contain scaling and centering offsets
+- Fix widget size tracking to update correctly when window is resized
+- Use ValueListenableBuilder to react to size changes in real-time
+- Improve SizeTrackingWidget to use LayoutBuilder for accurate size updates

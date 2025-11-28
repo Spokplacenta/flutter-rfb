@@ -112,11 +112,18 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
   SizeTrackingWidget _buildImage({required final Image image}) =>
       SizeTrackingWidget(
         sizeValueNotifier: _sizeValueNotifier,
-        child: RemoteFrameBufferGestureDetector(
-          image: image,
-          remoteFrameBufferWidgetSize: _sizeValueNotifier.value,
-          sendPort: _isolateSendPort,
-          child: RawImage(image: image),
+        child: ValueListenableBuilder<Size>(
+          valueListenable: _sizeValueNotifier,
+          builder: (final BuildContext context, final Size size, final Widget? child) =>
+              RemoteFrameBufferGestureDetector(
+            image: image,
+            remoteFrameBufferWidgetSize: size,
+            sendPort: _isolateSendPort,
+            child: RawImage(
+              image: image,
+              fit: BoxFit.contain, // Preserve aspect ratio, coordinates are calculated correctly
+            ),
+          ),
         ),
       );
 

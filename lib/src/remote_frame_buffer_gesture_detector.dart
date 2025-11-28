@@ -28,6 +28,10 @@ class RemoteFrameBufferGestureDetector extends GestureDetector {
       _image.height > 0;
 
   /// Convert local position to remote framebuffer coordinates.
+  /// 
+  /// With BoxFit.contain, the image is scaled to fit while preserving aspect ratio.
+  /// We need to calculate the actual scaling and offsets (centering) to map
+  /// widget coordinates to image coordinates correctly.
   int _toRemoteX(final double localX) {
     if (!_hasValidSize) {
       return 0;
@@ -40,11 +44,24 @@ class RemoteFrameBufferGestureDetector extends GestureDetector {
         _image.width == 0) {
       return 0;
     }
-    final double result = localX / _remoteFrameBufferWidgetSize.width * _image.width;
+    // Calculate scaling factors for both dimensions
+    final double scaleX = _remoteFrameBufferWidgetSize.width / _image.width;
+    final double scaleY = _remoteFrameBufferWidgetSize.height / _image.height;
+    // With BoxFit.contain, the actual scale is the minimum to preserve aspect ratio
+    final double actualScale = scaleX < scaleY ? scaleX : scaleY;
+    // Calculate the displayed image size
+    final double displayedWidth = _image.width * actualScale;
+    // Calculate offset (centering) - area where the image doesn't fill the widget horizontally
+    final double offsetX = (_remoteFrameBufferWidgetSize.width - displayedWidth) / 2;
+    // Adjust local coordinates by subtracting the offset
+    final double adjustedX = localX - offsetX;
+    // Convert to image coordinates using the actual scale
+    final double result = adjustedX / actualScale;
     if (!result.isFinite) {
       return 0;
     }
-    return result.toInt();
+    // Clamp to valid image bounds
+    return result.clamp(0, _image.width - 1).toInt();
   }
 
   int _toRemoteY(final double localY) {
@@ -59,11 +76,24 @@ class RemoteFrameBufferGestureDetector extends GestureDetector {
         _image.height == 0) {
       return 0;
     }
-    final double result = localY / _remoteFrameBufferWidgetSize.height * _image.height;
+    // Calculate scaling factors for both dimensions
+    final double scaleX = _remoteFrameBufferWidgetSize.width / _image.width;
+    final double scaleY = _remoteFrameBufferWidgetSize.height / _image.height;
+    // With BoxFit.contain, the actual scale is the minimum to preserve aspect ratio
+    final double actualScale = scaleX < scaleY ? scaleX : scaleY;
+    // Calculate the displayed image size
+    final double displayedHeight = _image.height * actualScale;
+    // Calculate offset (centering) - area where the image doesn't fill the widget vertically
+    final double offsetY = (_remoteFrameBufferWidgetSize.height - displayedHeight) / 2;
+    // Adjust local coordinates by subtracting the offset
+    final double adjustedY = localY - offsetY;
+    // Convert to image coordinates using the actual scale
+    final double result = adjustedY / actualScale;
     if (!result.isFinite) {
       return 0;
     }
-    return result.toInt();
+    // Clamp to valid image bounds
+    return result.clamp(0, _image.height - 1).toInt();
   }
 
   @override
