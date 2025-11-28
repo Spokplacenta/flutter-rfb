@@ -43,3 +43,8 @@
 ## 0.7.0
 
 - Use `dart_rfb` 0.9.0 with ZRLE support and widget-side logging
+
+## 0.7.1
+
+- Fix `Unsupported operation: Infinity or NaN toInt` error in gesture detector
+- Add defensive checks for Infinity/NaN values in coordinate calculations
