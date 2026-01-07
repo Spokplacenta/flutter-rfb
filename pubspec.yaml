@@ -9,7 +9,7 @@ environment:
   flutter: ">=1.17.0"
 
 dependencies:
-  dart_rfb:
+  dart_rfb: ^0.9.0
     path: ../dart-rfb
   flutter:
     sdk: flutter
