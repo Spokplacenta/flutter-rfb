@@ -10,7 +10,11 @@ environment:
 
 dependencies:
   dart_rfb: ^0.9.0
-    path: ../dart-rfb
+  # git:
+  #   path: dart-rfb/
+  #   ref: main
+  #   url: https://github.com/Goddchen/dart-rfb
+  # path: ../dart-rfb
   flutter:
     sdk: flutter
   fpdart: ^0.4.0
