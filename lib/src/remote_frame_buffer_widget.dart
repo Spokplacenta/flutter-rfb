@@ -234,7 +234,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                     (final _) {},
                   ),
                   zrle: () async => _logger.warning(
-                    'ZRLE rectangle received but not decoded upstream',
+                    'ZRLE rectangle received but not decoded upstream, dart_rfb should have decoded this and provided it here as a raw rectangle.',
                   ),
                   unsupported: (final ByteData bytes) async {},
                 );
