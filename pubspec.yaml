@@ -5,28 +5,27 @@ repository: https://github.com/Goddchen/flutter-vnc
 version: 0.7.0
 
 environment:
-  sdk: ">=2.18.6 <3.0.0"
-  flutter: ">=1.17.0"
+  sdk: ^3.5.0
+  flutter: ">=3.16.0"
 
 dependencies:
-  dart_rfb: ^0.9.0
-  # git:
-  #   path: dart-rfb/
-  #   ref: main
-  #   url: https://github.com/Goddchen/dart-rfb
-  # path: ../dart-rfb
+  dart_rfb:
+    git:
+      url: https://github.com/Spokplacenta/dart-rfb.git
+      ref: main
   flutter:
     sdk: flutter
+  # Même contrainte que dart_rfb (dépendance git ci-dessus) pour une seule résolution.
   fpdart: ^0.4.0
-  freezed_annotation: ^2.4.1
-  logging: ^1.1.0
+  freezed_annotation: ^2.4.4
+  logging: ^1.2.0
   stream_transform: ^2.1.0
 
 dev_dependencies:
-  build_runner: ^2.3.3
-  flutter_lints: ^2.0.0
+  build_runner: ^2.4.13
+  flutter_lints: ^5.0.0
   flutter_test:
     sdk: flutter
-  freezed: ^2.5.2
+  freezed: ^2.5.7
 
 flutter:

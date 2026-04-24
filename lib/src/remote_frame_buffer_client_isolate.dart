@@ -82,11 +82,18 @@ Future<void> startRemoteFrameBufferClient(
       frameBufferUpdateRequest: (final _) => client.requestUpdate(),
     );
   });
-  await client.connect(
-    hostname: initMessage.hostName,
-    password: initMessage.password.toNullable(),
-    port: initMessage.port,
-  );
+  try {
+    await client.connect(
+      hostname: initMessage.hostName,
+      password: initMessage.password.toNullable(),
+      port: initMessage.port,
+    );
+  } on Exception catch (e, st) {
+    // Même format que [Isolate.spawn] `onError` : évite une erreur « non gérée »
+    // dans l’isolate pour un refus TCP / handshake attendu côté UI.
+    initMessage.sendPort.send(<Object>[e, st]);
+    return;
+  }
   client
     ..handleIncomingMessages()
     ..requestUpdate();

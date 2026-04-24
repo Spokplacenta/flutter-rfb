@@ -16,10 +16,10 @@ class SizeTrackingWidget extends StatefulWidget {
         _sizeValueNotifier = sizeValueNotifier;
 
   @override
-  State<StatefulWidget> createState() => _SizeTackingState();
+  State<StatefulWidget> createState() => _SizeTrackingState();
 }
 
-class _SizeTackingState extends State<SizeTrackingWidget> {
+class _SizeTrackingState extends State<SizeTrackingWidget> {
   Size? _lastSize;
 
   void _updateSize() {
