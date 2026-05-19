@@ -51,3 +51,11 @@
 - Use ValueListenableBuilder to react to size changes in real-time
 - Improve SizeTrackingWidget to use LayoutBuilder for accurate size updates
 - Thanks @Spokplacenta !
+
+## 0.8.0
+
+- Add [RemoteFrameBufferWidget.syncLocalClipboardToRemote] (default `true`) to disable pushing the local clipboard to the remote VNC server
+- Add [RemoteFrameBufferWidget.onFirstFrame] callback after the first decoded framebuffer is shown
+- Fix perpetual loading spinner when ZRLE leaves the internal buffer at zero but a decoded [Image] exists
+- Harden [RemoteFrameBufferWidget._decodeAndUpdateImage] with dimension and buffer length checks
+- Migrate keyboard handling from deprecated `RawKeyboard` to `HardwareKeyboard`

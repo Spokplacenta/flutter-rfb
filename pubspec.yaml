@@ -2,7 +2,8 @@ description: A VNC / Remote Framebuffer / RFC 6143 client purely written in Dart
 homepage: https://github.com/Goddchen/flutter-vnc
 name: flutter_rfb
 repository: https://github.com/Goddchen/flutter-vnc
-version: 0.7.0
+version: 0.8.0
+publish_to: 'none'
 
 environment:
   sdk: ^3.5.0
@@ -10,9 +11,10 @@ environment:
 
 dependencies:
   dart_rfb:
-    git:
-      url: https://github.com/Spokplacenta/dart-rfb.git
-      ref: main
+    path: ../dart-rfb
+    # git:
+    #   url: https://github.com/Spokplacenta/dart-rfb.git
+    #   ref: main
   flutter:
     sdk: flutter
   # Même contrainte que dart_rfb (dépendance git ci-dessus) pour une seule résolution.

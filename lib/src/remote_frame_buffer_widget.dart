@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:dart_rfb/dart_rfb.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Image;
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_rfb/src/child_size_notifier_widget.dart';
 import 'package:flutter_rfb/src/extensions/logical_keyboard_key_extensions.dart';
@@ -24,23 +25,36 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   final Option<Widget> _connectingWidget;
   final String _hostName;
   final Option<void Function(Object error)> _onError;
+  final Option<VoidCallback> _onFirstFrame;
   final Option<String> _password;
   final int _port;
+  final bool _syncLocalClipboardToRemote;
 
   /// Immediately tries to establish a connection to a remote server at
   /// [hostName]:[port], optionally using [password].
+  ///
+  /// Set [syncLocalClipboardToRemote] to `false` to avoid pushing the local
+  /// clipboard to the remote server (useful when the host app copies logs or
+  /// console text that must not be sent to the VNC session).
+  ///
+  /// [onFirstFrame] is called once after the first decoded framebuffer image
+  /// is displayed.
   RemoteFrameBufferWidget({
     super.key,
     final Widget? connectingWidget,
     required final String hostName,
     final void Function(Object error)? onError,
+    final VoidCallback? onFirstFrame,
     final String? password,
     final int port = 5900,
+    final bool syncLocalClipboardToRemote = true,
   })  : _connectingWidget = optionOf(connectingWidget),
         _hostName = hostName,
         _onError = optionOf(onError),
+        _onFirstFrame = optionOf(onFirstFrame),
         _password = optionOf(password),
-        _port = port;
+        _port = port,
+        _syncLocalClipboardToRemote = syncLocalClipboardToRemote;
 
   @override
   State<RemoteFrameBufferWidget> createState() =>
@@ -49,7 +63,7 @@ class RemoteFrameBufferWidget extends StatefulWidget {
 
 @visibleForTesting
 class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
-  late Timer _clipBoardMonitorTimer;
+  Timer? _clipBoardMonitorTimer;
   Option<ByteData> _frameBuffer = none();
   Option<Image> _image = none();
   Option<Isolate> _isolate = none();
@@ -58,26 +72,14 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
   Option<StreamSubscription<Object?>> _streamSubscription = none();
 
   @override
-  Widget build(final BuildContext context) => _frameBuffer
-      .flatMap(
-        (final ByteData frameBuffer) => frameBuffer.buffer
-                .asUint8List(
-                  frameBuffer.offsetInBytes,
-                  frameBuffer.lengthInBytes,
-                )
-                .where((final int byte) => byte != 0)
-                .isNotEmpty
-            ? _image
-            : none<Image>(),
-      )
-      .match(
+  Widget build(final BuildContext context) => _image.match(
         _buildConnecting,
         (final Image image) => _buildImage(image: image),
       );
 
   @override
   void dispose() {
-    _clipBoardMonitorTimer.cancel();
+    _clipBoardMonitorTimer?.cancel();
     _streamSubscription.match(
       () {},
       (final StreamSubscription<Object?> subscription) =>
@@ -91,15 +93,17 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
       () {},
       (final Isolate isolate) => isolate.kill(),
     );
-    RawKeyboard.instance.removeListener(_rawKeyEventListener);
+    HardwareKeyboard.instance.removeHandler(_keyEventHandler);
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
-    _monitorClipBoard();
-    RawKeyboard.instance.addListener(_rawKeyEventListener);
+    if (widget._syncLocalClipboardToRemote) {
+      _monitorClipBoard();
+    }
+    HardwareKeyboard.instance.addHandler(_keyEventHandler);
     unawaited(_initAsync());
   }
 
@@ -121,7 +125,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
             sendPort: _isolateSendPort,
             child: RawImage(
               image: image,
-              fit: BoxFit.contain, // Preserve aspect ratio, coordinates are calculated correctly
+              fit: BoxFit.contain,
             ),
           ),
         ),
@@ -131,33 +135,63 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
     required final ByteData frameBuffer,
     required final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
         message,
-  }) =>
-      decodeImageFromPixels(
-        frameBuffer.buffer.asUint8List(),
-        message.frameBufferWidth,
-        message.frameBufferHeight,
-        PixelFormat.bgra8888,
-        (final Image result) {
-          if (mounted) {
-            setState(
-              () {
-                _image.match(
-                  () {},
-                  (final Image image) => image.dispose(),
-                );
-                _image = some(result);
-              },
-            );
-            _isolateSendPort.match(
-              () {},
-              (final SendPort sendPort) => sendPort.send(
-                const RemoteFrameBufferIsolateSendMessage
-                    .frameBufferUpdateRequest(),
-              ),
-            );
-          }
-        },
+  }) {
+    final int w = message.frameBufferWidth;
+    final int h = message.frameBufferHeight;
+    if (w <= 0 || h <= 0) {
+      _logger.warning('Framebuffer update: invalid dimensions (${w}x$h).');
+      return;
+    }
+    final int expectedBytes = w * h * 4;
+    if (frameBuffer.lengthInBytes < expectedBytes) {
+      _logger.warning(
+        'Framebuffer update: buffer too short (${frameBuffer.lengthInBytes} < $expectedBytes).',
       );
+      return;
+    }
+    final Uint8List pixels = frameBuffer.buffer.asUint8List(
+      frameBuffer.offsetInBytes,
+      expectedBytes,
+    );
+    decodeImageFromPixels(
+      pixels,
+      w,
+      h,
+      PixelFormat.bgra8888,
+      (final Image result) {
+        if (!mounted) {
+          result.dispose();
+          return;
+        }
+        final bool isFirstFrame = _image.isNone();
+        setState(() {
+          _image.match(
+            () {},
+            (final Image image) => image.dispose(),
+          );
+          _image = some(result);
+        });
+        if (isFirstFrame) {
+          widget._onFirstFrame.match(
+            () {},
+            (final VoidCallback callback) {
+              SchedulerBinding.instance.addPostFrameCallback((final _) {
+                if (mounted) {
+                  callback();
+                }
+              });
+            },
+          );
+        }
+        _isolateSendPort.match(
+          () {},
+          (final SendPort sendPort) => sendPort.send(
+            const RemoteFrameBufferIsolateSendMessage.frameBufferUpdateRequest(),
+          ),
+        );
+      },
+    );
+  }
 
   Task<void> _handleFrameBufferUpdateMessage({
     required final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
@@ -213,9 +247,9 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                       ),
                     ).run())
                         .match(
-                      (final Object error) =>
-                          // ignore: avoid_print
-                          print('Error updating frame buffer: $error'),
+                      (final Object error) => debugPrint(
+                        'RemoteFrameBufferWidget: updateFrameBuffer $error',
+                      ),
                       (final _) {},
                     );
                   },
@@ -228,13 +262,13 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                     rectangle: rectangle,
                   ).run())
                       .match(
-                    (final Object error) =>
-                        // ignore: avoid_print
-                        print('Error updating frame buffer: $error'),
+                    (final Object error) => debugPrint(
+                      'RemoteFrameBufferWidget: updateFrameBuffer $error',
+                    ),
                     (final _) {},
                   ),
                   zrle: () async => _logger.warning(
-                    'ZRLE rectangle received but not decoded upstream, dart_rfb should have decoded this and provided it here as a raw rectangle.',
+                    'ZRLE rectangle received — decoding should happen upstream in dart_rfb.',
                   ),
                   unsupported: (final ByteData bytes) async {},
                 );
@@ -254,7 +288,6 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
     _streamSubscription = some(
       receivePort.listen(
         (final Object? message) {
-          // Error, first is error, second is stacktrace or null
           if (message is List) {
             widget._onError.match(
               () {},
@@ -267,12 +300,14 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                 final RemoteFrameBufferIsolateReceiveMessageClipBoardUpdate
                     update,
               ) =>
-                  Clipboard.setData(ClipboardData(text: update.text)),
+                  unawaited(
+                    Clipboard.setData(ClipboardData(text: update.text)),
+                  ),
               frameBufferUpdate: (
                 final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
                     update,
               ) {
-                _handleFrameBufferUpdateMessage(update: update).run();
+                unawaited(_handleFrameBufferUpdateMessage(update: update).run());
               },
             );
           }
@@ -326,16 +361,18 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
     );
   }
 
-  void _rawKeyEventListener(final RawKeyEvent rawKeyEvent) =>
-      _isolateSendPort.match(
-        () {},
-        (final SendPort sendPort) => sendPort.send(
-          RemoteFrameBufferIsolateSendMessage.keyEvent(
-            down: rawKeyEvent.isKeyPressed(rawKeyEvent.logicalKey),
-            key: rawKeyEvent.logicalKey.asXWindowSystemKey(),
-          ),
+  bool _keyEventHandler(final KeyEvent event) {
+    _isolateSendPort.match(
+      () {},
+      (final SendPort sendPort) => sendPort.send(
+        RemoteFrameBufferIsolateSendMessage.keyEvent(
+          down: event is KeyDownEvent,
+          key: event.logicalKey.asXWindowSystemKey(),
         ),
-      );
+      ),
+    );
+    return false;
+  }
 
   /// Updates [frameBuffer] with the given [rectangle]s.
   @visibleForTesting

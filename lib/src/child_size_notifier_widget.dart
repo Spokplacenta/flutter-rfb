@@ -46,14 +46,10 @@ class _SizeTrackingState extends State<SizeTrackingWidget> {
   }
 
   @override
-  Widget build(final BuildContext context) {
-    // Use LayoutBuilder to detect size changes
-    return LayoutBuilder(
-      builder: (final BuildContext context, final BoxConstraints constraints) {
-        // Schedule size update after layout
-        WidgetsBinding.instance.addPostFrameCallback((final _) => _updateSize());
-        return widget._child;
-      },
-    );
-  }
+  Widget build(final BuildContext context) => LayoutBuilder(
+        builder: (final BuildContext context, final BoxConstraints constraints) {
+          WidgetsBinding.instance.addPostFrameCallback((final _) => _updateSize());
+          return widget._child;
+        },
+      );
 }
