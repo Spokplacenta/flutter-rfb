@@ -68,9 +68,11 @@ packages:
   dart_rfb:
     dependency: transitive
     description:
-      path: "../../dart-rfb"
-      relative: true
-    source: path
+      path: "."
+      ref: main
+      resolved-ref: "4321ffb3199ecb47c429b725be6a1c2472b15a1d"
+      url: "https://github.com/Spokplacenta/dart-rfb.git"
+    source: git
     version: "0.9.0"
   fake_async:
     dependency: transitive
