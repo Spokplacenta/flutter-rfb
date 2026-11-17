@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:dart_rfb/dart_rfb.dart';
@@ -8,11 +7,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Image;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_rfb/src/bgra_opaque.dart';
 import 'package:flutter_rfb/src/child_size_notifier_widget.dart';
 import 'package:flutter_rfb/src/extensions/logical_keyboard_key_extensions.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_client_isolate.dart';
-import 'package:flutter_rfb/src/remote_frame_buffer_gesture_detector.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_isolate_messages.dart';
+import 'package:flutter_rfb/src/remote_frame_buffer_pointer_listener.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 import 'package:logging/logging.dart';
 
@@ -27,6 +27,7 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   final Option<void Function(Object error)> _onError;
   final Option<VoidCallback> _onFirstFrame;
   final Option<String> _password;
+  final RemoteFrameBufferPixelFormat _pixelFormat;
   final int _port;
   final bool _syncLocalClipboardToRemote;
 
@@ -39,6 +40,11 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   ///
   /// [onFirstFrame] is called once after the first decoded framebuffer image
   /// is displayed.
+  ///
+  /// [pixelFormat] is the format asked to the server:
+  /// [RemoteFrameBufferPixelFormat.rgb565] (16 bits, the default),
+  /// [RemoteFrameBufferPixelFormat.bgr233] (8 bits, 64 colours, the least
+  /// data) or [RemoteFrameBufferPixelFormat.bgra8888] (32 bits, full colour).
   RemoteFrameBufferWidget({
     super.key,
     final Widget? connectingWidget,
@@ -46,6 +52,8 @@ class RemoteFrameBufferWidget extends StatefulWidget {
     final void Function(Object error)? onError,
     final VoidCallback? onFirstFrame,
     final String? password,
+    final RemoteFrameBufferPixelFormat pixelFormat =
+        RemoteFrameBufferPixelFormat.rgb565,
     final int port = 5900,
     final bool syncLocalClipboardToRemote = true,
   })  : _connectingWidget = optionOf(connectingWidget),
@@ -53,8 +61,13 @@ class RemoteFrameBufferWidget extends StatefulWidget {
         _onError = optionOf(onError),
         _onFirstFrame = optionOf(onFirstFrame),
         _password = optionOf(password),
+        _pixelFormat = pixelFormat,
         _port = port,
         _syncLocalClipboardToRemote = syncLocalClipboardToRemote;
+
+  /// The pixel format asked to the server.
+  @visibleForTesting
+  RemoteFrameBufferPixelFormat get pixelFormat => _pixelFormat;
 
   @override
   State<RemoteFrameBufferWidget> createState() =>
@@ -66,6 +79,15 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
   Timer? _clipBoardMonitorTimer;
   Option<ByteData> _frameBuffer = none();
   Option<Image> _image = none();
+
+  /// A [decodeImageFromPixels] is running: at most one at a time.
+  bool _imageDecodeBusy = false;
+
+  /// The framebuffer changed since the last image was started.
+  bool _imageDirty = false;
+
+  /// A publication is scheduled for the next frame (vsync).
+  bool _publishScheduled = false;
   Option<Isolate> _isolate = none();
   Option<SendPort> _isolateSendPort = none();
   final ValueNotifier<Size> _sizeValueNotifier = ValueNotifier<Size>(Size.zero);
@@ -118,8 +140,12 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
         sizeValueNotifier: _sizeValueNotifier,
         child: ValueListenableBuilder<Size>(
           valueListenable: _sizeValueNotifier,
-          builder: (final BuildContext context, final Size size, final Widget? child) =>
-              RemoteFrameBufferGestureDetector(
+          builder: (
+            final BuildContext context,
+            final Size size,
+            final Widget? child,
+          ) =>
+              RemoteFrameBufferPointerListener(
             image: image,
             remoteFrameBufferWidgetSize: size,
             sendPort: _isolateSendPort,
@@ -131,15 +157,21 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
         ),
       );
 
+  /// Decodes the current [frameBuffer] into a new [Image].
+  ///
+  /// [onDone] is always called, even when nothing is decoded, so that the
+  /// next publication is never blocked.
   void _decodeAndUpdateImage({
     required final ByteData frameBuffer,
-    required final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
-        message,
+    required final int frameBufferHeight,
+    required final int frameBufferWidth,
+    required final VoidCallback onDone,
   }) {
-    final int w = message.frameBufferWidth;
-    final int h = message.frameBufferHeight;
+    final int w = frameBufferWidth;
+    final int h = frameBufferHeight;
     if (w <= 0 || h <= 0) {
       _logger.warning('Framebuffer update: invalid dimensions (${w}x$h).');
+      onDone();
       return;
     }
     final int expectedBytes = w * h * 4;
@@ -147,12 +179,17 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
       _logger.warning(
         'Framebuffer update: buffer too short (${frameBuffer.lengthInBytes} < $expectedBytes).',
       );
+      onDone();
       return;
     }
-    final Uint8List pixels = frameBuffer.buffer.asUint8List(
-      frameBuffer.offsetInBytes,
-      expectedBytes,
+    // A copy: the framebuffer keeps changing while the image is decoded.
+    final Uint8List pixels = Uint8List.fromList(
+      frameBuffer.buffer.asUint8List(
+        frameBuffer.offsetInBytes,
+        expectedBytes,
+      ),
     );
+    forceBgraOpaque(pixels);
     decodeImageFromPixels(
       pixels,
       w,
@@ -161,6 +198,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
       (final Image result) {
         if (!mounted) {
           result.dispose();
+          onDone();
           return;
         }
         final bool isFirstFrame = _image.isNone();
@@ -183,14 +221,49 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
             },
           );
         }
-        _isolateSendPort.match(
-          () {},
-          (final SendPort sendPort) => sendPort.send(
-            const RemoteFrameBufferIsolateSendMessage.frameBufferUpdateRequest(),
-          ),
-        );
+        onDone();
       },
     );
+  }
+
+  /// Publishes the framebuffer at the next vsync.
+  ///
+  /// Updates received in between are coalesced: at most one [Image] is being
+  /// decoded at a time, and the most recent framebuffer always wins. No fixed
+  /// frame rate cap.
+  void _publishFrame({
+    required final ByteData frameBuffer,
+    required final int frameBufferHeight,
+    required final int frameBufferWidth,
+  }) {
+    _imageDirty = true;
+    if (_imageDecodeBusy || _publishScheduled) {
+      return;
+    }
+    _publishScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((final _) {
+      _publishScheduled = false;
+      if (!mounted || !_imageDirty) {
+        return;
+      }
+      _imageDirty = false;
+      _imageDecodeBusy = true;
+      _decodeAndUpdateImage(
+        frameBuffer: frameBuffer,
+        frameBufferHeight: frameBufferHeight,
+        frameBufferWidth: frameBufferWidth,
+        onDone: () {
+          _imageDecodeBusy = false;
+          if (mounted && _imageDirty) {
+            _publishFrame(
+              frameBuffer: frameBuffer,
+              frameBufferHeight: frameBufferHeight,
+              frameBufferWidth: frameBufferWidth,
+            );
+          }
+        },
+      );
+    });
   }
 
   Task<void> _handleFrameBufferUpdateMessage({
@@ -216,43 +289,11 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
               for (final RemoteFrameBufferClientUpdateRectangle rectangle
                   in update.update.rectangles) {
                 await rectangle.encodingType.when(
-                  copyRect: () async {
-                    final int sourceX = rectangle.byteData.getUint16(0);
-                    final int sourceY = rectangle.byteData.getUint16(2);
-                    final BytesBuilder bytesBuilder = BytesBuilder();
-                    for (int row = 0; row < rectangle.height; row++) {
-                      for (int column = 0; column < rectangle.width; column++) {
-                        bytesBuilder.add(
-                          frameBuffer.buffer.asUint8List(
-                            ((sourceY + row) * update.frameBufferWidth +
-                                    sourceX +
-                                    column) *
-                                4,
-                            4,
-                          ),
-                        );
-                      }
-                    }
-                    return (await updateFrameBuffer(
-                      frameBuffer: frameBuffer,
-                      frameBufferSize: Size(
-                        update.frameBufferWidth.toDouble(),
-                        update.frameBufferHeight.toDouble(),
-                      ),
-                      rectangle: rectangle.copyWith(
-                        encodingType: const RemoteFrameBufferEncodingType.raw(),
-                        byteData: ByteData.sublistView(
-                          bytesBuilder.toBytes(),
-                        ),
-                      ),
-                    ).run())
-                        .match(
-                      (final Object error) => debugPrint(
-                        'RemoteFrameBufferWidget: updateFrameBuffer $error',
-                      ),
-                      (final _) {},
-                    );
-                  },
+                  copyRect: () async => copyRect(
+                    frameBuffer: frameBuffer,
+                    frameBufferWidth: update.frameBufferWidth,
+                    rectangle: rectangle,
+                  ),
                   raw: () async => (await updateFrameBuffer(
                     frameBuffer: frameBuffer,
                     frameBufferSize: Size(
@@ -273,9 +314,12 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                   unsupported: (final ByteData bytes) async {},
                 );
               }
-              _decodeAndUpdateImage(
+              // The next update request is sent by the RFB client itself as
+              // soon as it reads the header of this update (pipelining).
+              _publishFrame(
                 frameBuffer: frameBuffer,
-                message: update,
+                frameBufferHeight: update.frameBufferHeight,
+                frameBufferWidth: update.frameBufferWidth,
               );
             },
           ),
@@ -301,13 +345,15 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                     update,
               ) =>
                   unawaited(
-                    Clipboard.setData(ClipboardData(text: update.text)),
-                  ),
+                Clipboard.setData(ClipboardData(text: update.text)),
+              ),
               frameBufferUpdate: (
                 final RemoteFrameBufferIsolateReceiveMessageFrameBufferUpdate
                     update,
               ) {
-                unawaited(_handleFrameBufferUpdateMessage(update: update).run());
+                unawaited(
+                  _handleFrameBufferUpdateMessage(update: update).run(),
+                );
               },
             );
           }
@@ -321,6 +367,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
         RemoteFrameBufferIsolateInitMessage(
           hostName: widget._hostName,
           password: widget._password,
+          pixelFormat: widget._pixelFormat,
           port: widget._port,
           sendPort: receivePort.sendPort,
         ),
@@ -383,20 +430,62 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
   }) =>
       TaskEither<Object, void>.tryCatch(
         () async {
-          for (int y = 0; y < rectangle.height; y++) {
-            for (int x = 0; x < rectangle.width; x++) {
-              final int frameBufferX = rectangle.x + x;
-              final int frameBufferY = rectangle.y + y;
-              final int pixelBytes =
-                  rectangle.byteData.getUint32((y * rectangle.width + x) * 4);
-              frameBuffer.setUint32(
-                ((frameBufferY * frameBufferSize.width + frameBufferX) * 4)
-                    .toInt(),
-                pixelBytes,
-              );
-            }
+          final int width = rectangle.width;
+          final int height = rectangle.height;
+          if (width <= 0 || height <= 0) {
+            return;
+          }
+          final int dstStride = frameBufferSize.width.toInt() * 4;
+          final int srcStride = width * 4;
+          final Uint8List src = rectangle.byteData.buffer.asUint8List(
+            rectangle.byteData.offsetInBytes,
+            rectangle.byteData.lengthInBytes,
+          );
+          final Uint8List dst = frameBuffer.buffer.asUint8List(
+            frameBuffer.offsetInBytes,
+            frameBuffer.lengthInBytes,
+          );
+          for (int y = 0; y < height; y++) {
+            final int dstIndex =
+                ((rectangle.y + y) * dstStride) + rectangle.x * 4;
+            dst.setRange(dstIndex, dstIndex + srcStride, src, y * srcStride);
           }
         },
         (final Object error, final _) => error,
       );
+
+  /// Copies the source area of a CopyRect [rectangle] to its destination in
+  /// [frameBuffer], row by row. Source and destination may overlap.
+  @visibleForTesting
+  static void copyRect({
+    required final ByteData frameBuffer,
+    required final int frameBufferWidth,
+    required final RemoteFrameBufferClientUpdateRectangle rectangle,
+  }) {
+    final int width = rectangle.width;
+    final int height = rectangle.height;
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    final int sourceX = rectangle.byteData.getUint16(0);
+    final int sourceY = rectangle.byteData.getUint16(2);
+    final int stride = frameBufferWidth * 4;
+    final int rowBytes = width * 4;
+    final Uint8List pixels = frameBuffer.buffer.asUint8List(
+      frameBuffer.offsetInBytes,
+      frameBuffer.lengthInBytes,
+    );
+    // Through a row buffer, so a horizontal overlap is safe too.
+    final Uint8List row = Uint8List(rowBytes);
+    // Moving down: copy the bottom rows first, so none is overwritten before
+    // it is read.
+    final bool downward = sourceY < rectangle.y;
+    for (int i = 0; i < height; i++) {
+      final int y = downward ? height - 1 - i : i;
+      final int srcIndex = ((sourceY + y) * stride) + sourceX * 4;
+      row.setRange(0, rowBytes, pixels, srcIndex);
+      final int dstIndex = ((rectangle.y + y) * stride) + rectangle.x * 4;
+      pixels.setRange(dstIndex, dstIndex + rowBytes, row);
+    }
+  }
 }

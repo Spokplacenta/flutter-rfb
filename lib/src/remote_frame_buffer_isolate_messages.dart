@@ -14,6 +14,9 @@ class RemoteFrameBufferIsolateInitMessage
   const factory RemoteFrameBufferIsolateInitMessage({
     required final String hostName,
     required final Option<String> password,
+
+    /// The pixel format asked to the server.
+    required final RemoteFrameBufferPixelFormat pixelFormat,
     required final int port,
 
     /// The [SendPort] used for communicating with the caller.

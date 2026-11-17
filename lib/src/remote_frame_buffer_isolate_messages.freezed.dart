@@ -18,6 +18,10 @@ final _privateConstructorUsedError = UnsupportedError(
 mixin _$RemoteFrameBufferIsolateInitMessage {
   String get hostName => throw _privateConstructorUsedError;
   Option<String> get password => throw _privateConstructorUsedError;
+
+  /// The pixel format asked to the server.
+  RemoteFrameBufferPixelFormat get pixelFormat =>
+      throw _privateConstructorUsedError;
   int get port => throw _privateConstructorUsedError;
 
   /// The [SendPort] used for communicating with the caller.
@@ -38,7 +42,11 @@ abstract class $RemoteFrameBufferIsolateInitMessageCopyWith<$Res> {
           RemoteFrameBufferIsolateInitMessage>;
   @useResult
   $Res call(
-      {String hostName, Option<String> password, int port, SendPort sendPort});
+      {String hostName,
+      Option<String> password,
+      RemoteFrameBufferPixelFormat pixelFormat,
+      int port,
+      SendPort sendPort});
 }
 
 /// @nodoc
@@ -57,6 +65,7 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
   $Res call({
     Object? hostName = null,
     Object? password = null,
+    Object? pixelFormat = null,
     Object? port = null,
     Object? sendPort = null,
   }) {
@@ -69,6 +78,10 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
           ? _value.password
           : password // ignore: cast_nullable_to_non_nullable
               as Option<String>,
+      pixelFormat: null == pixelFormat
+          ? _value.pixelFormat
+          : pixelFormat // ignore: cast_nullable_to_non_nullable
+              as RemoteFrameBufferPixelFormat,
       port: null == port
           ? _value.port
           : port // ignore: cast_nullable_to_non_nullable
@@ -91,7 +104,11 @@ abstract class _$$_RemoteFrameBufferIsolateInitMessageCopyWith<$Res>
   @override
   @useResult
   $Res call(
-      {String hostName, Option<String> password, int port, SendPort sendPort});
+      {String hostName,
+      Option<String> password,
+      RemoteFrameBufferPixelFormat pixelFormat,
+      int port,
+      SendPort sendPort});
 }
 
 /// @nodoc
@@ -109,6 +126,7 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
   $Res call({
     Object? hostName = null,
     Object? password = null,
+    Object? pixelFormat = null,
     Object? port = null,
     Object? sendPort = null,
   }) {
@@ -121,6 +139,10 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
           ? _value.password
           : password // ignore: cast_nullable_to_non_nullable
               as Option<String>,
+      pixelFormat: null == pixelFormat
+          ? _value.pixelFormat
+          : pixelFormat // ignore: cast_nullable_to_non_nullable
+              as RemoteFrameBufferPixelFormat,
       port: null == port
           ? _value.port
           : port // ignore: cast_nullable_to_non_nullable
@@ -141,6 +163,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
   const _$_RemoteFrameBufferIsolateInitMessage(
       {required this.hostName,
       required this.password,
+      required this.pixelFormat,
       required this.port,
       required this.sendPort});
 
@@ -148,6 +171,10 @@ class _$_RemoteFrameBufferIsolateInitMessage
   final String hostName;
   @override
   final Option<String> password;
+
+  /// The pixel format asked to the server.
+  @override
+  final RemoteFrameBufferPixelFormat pixelFormat;
   @override
   final int port;
 
@@ -157,7 +184,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'RemoteFrameBufferIsolateInitMessage(hostName: $hostName, password: $password, port: $port, sendPort: $sendPort)';
+    return 'RemoteFrameBufferIsolateInitMessage(hostName: $hostName, password: $password, pixelFormat: $pixelFormat, port: $port, sendPort: $sendPort)';
   }
 
   @override
@@ -167,6 +194,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
       ..add(DiagnosticsProperty('type', 'RemoteFrameBufferIsolateInitMessage'))
       ..add(DiagnosticsProperty('hostName', hostName))
       ..add(DiagnosticsProperty('password', password))
+      ..add(DiagnosticsProperty('pixelFormat', pixelFormat))
       ..add(DiagnosticsProperty('port', port))
       ..add(DiagnosticsProperty('sendPort', sendPort));
   }
@@ -180,6 +208,8 @@ class _$_RemoteFrameBufferIsolateInitMessage
                 other.hostName == hostName) &&
             (identical(other.password, password) ||
                 other.password == password) &&
+            (identical(other.pixelFormat, pixelFormat) ||
+                other.pixelFormat == pixelFormat) &&
             (identical(other.port, port) || other.port == port) &&
             (identical(other.sendPort, sendPort) ||
                 other.sendPort == sendPort));
@@ -187,7 +217,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
 
   @override
   int get hashCode =>
-      Object.hash(runtimeType, hostName, password, port, sendPort);
+      Object.hash(runtimeType, hostName, password, pixelFormat, port, sendPort);
 
   @JsonKey(ignore: true)
   @override
@@ -203,6 +233,7 @@ abstract class _RemoteFrameBufferIsolateInitMessage
   const factory _RemoteFrameBufferIsolateInitMessage(
           {required final String hostName,
           required final Option<String> password,
+          required final RemoteFrameBufferPixelFormat pixelFormat,
           required final int port,
           required final SendPort sendPort}) =
       _$_RemoteFrameBufferIsolateInitMessage;
@@ -211,6 +242,10 @@ abstract class _RemoteFrameBufferIsolateInitMessage
   String get hostName;
   @override
   Option<String> get password;
+  @override
+
+  /// The pixel format asked to the server.
+  RemoteFrameBufferPixelFormat get pixelFormat;
   @override
   int get port;
   @override

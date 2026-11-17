@@ -13,7 +13,7 @@ dependencies:
   dart_rfb:
     git:
       url: https://github.com/Spokplacenta/dart-rfb.git
-      ref: main
+      ref: perf/latence
   flutter:
     sdk: flutter
   # Même contrainte que dart_rfb (dépendance git ci-dessus) pour une seule résolution.

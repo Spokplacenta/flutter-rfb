@@ -15,7 +15,7 @@ Future<void> startRemoteFrameBufferClient(
   final RemoteFrameBufferIsolateInitMessage initMessage,
 ) async {
   Logger.root
-    ..level = Level.FINE
+    ..level = Level.WARNING
     ..onRecord.listen(
       (final LogRecord logRecord) {
         if (kDebugMode) {
@@ -25,7 +25,9 @@ Future<void> startRemoteFrameBufferClient(
         }
       },
     );
-  final RemoteFrameBufferClient client = RemoteFrameBufferClient();
+  final RemoteFrameBufferClient client = RemoteFrameBufferClient(
+    pixelFormat: initMessage.pixelFormat,
+  );
   final ReceivePort receivePort = ReceivePort();
   client.updateStream.listen(
     (final RemoteFrameBufferClientUpdate update) {
@@ -94,6 +96,8 @@ Future<void> startRemoteFrameBufferClient(
     initMessage.sendPort.send(<Object>[e, st]);
     return;
   }
+  // The client pipelines update requests: this first one is the only request
+  // sent from here, the client then asks for the next update by itself.
   client
     ..handleIncomingMessages()
     ..requestUpdate();

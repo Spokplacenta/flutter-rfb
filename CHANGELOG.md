@@ -59,3 +59,15 @@
 - Fix perpetual loading spinner when ZRLE leaves the internal buffer at zero but a decoded [Image] exists
 - Harden [RemoteFrameBufferWidget._decodeAndUpdateImage] with dimension and buffer length checks
 - Migrate keyboard handling from deprecated `RawKeyboard` to `HardwareKeyboard`
+
+## Unreleased
+
+- Requires the `dart_rfb` update request pipelining: the widget no longer sends a `FramebufferUpdateRequest` after each rendered image, the RFB client asks for the next update as soon as it reads an update header
+- Compose Raw rectangles row by row with `setRange` (about 20x faster than per pixel)
+- CopyRect copies row by row through a row buffer, overlapping areas included
+- Publish images at the next vsync, coalesced: at most one `decodeImageFromPixels` at a time, the most recent framebuffer wins, no fixed frame rate cap
+- Decode a copy of the framebuffer, with an opaque alpha byte (servers often leave it at 0 in Raw rectangles)
+- The image publication always completes, even when a framebuffer is rejected, so the display can no longer freeze
+- Pointer input uses a `Listener` instead of a `GestureDetector`: a press is sent at once, outside the gesture arena (also inside an `InteractiveViewer`), and moves with a button pressed are sent, at most one per frame. Only the first pointer is forwarded. The public API is unchanged
+- RFB isolate logs at `WARNING` instead of `FINE`
+- Add `RemoteFrameBufferWidget.pixelFormat`, the pixel format asked to the server: `RemoteFrameBufferPixelFormat.rgb565` (16 bits, the default), `.bgr233` (8 bits, 64 colours) or `.bgra8888` (32 bits, the previous behaviour). Less data on slow links. `RemoteFrameBufferPixelFormat` is exported by `flutter_rfb`
