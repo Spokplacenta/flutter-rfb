@@ -14,6 +14,7 @@ import 'package:flutter_rfb/src/remote_frame_buffer_client_isolate.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_isolate_messages.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_local_feedback.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_pointer_listener.dart';
+import 'package:flutter_rfb/src/remote_frame_buffer_refresh_scheduler.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 import 'package:logging/logging.dart';
 
@@ -24,16 +25,20 @@ final Logger _logger = Logger('RemoteFrameBufferWidget');
 /// in an isolate. On success, it runs the read loop in that isolate.
 class RemoteFrameBufferWidget extends StatefulWidget {
   final Option<Widget> _connectingWidget;
+  final List<RemoteFrameBufferEncodingType> _encodings;
   final MouseCursor _fallbackCursor;
+  final Duration? _fullRefreshInterval;
   final String _hostName;
   final bool _localCursor;
   final Option<void Function(Object error)> _onError;
   final Option<VoidCallback> _onFirstFrame;
   final Option<String> _password;
+  final bool _pipelineUpdateRequests;
   final RemoteFrameBufferPixelFormat _pixelFormat;
   final int _port;
   final bool _pressFeedback;
   final Option<Color> _pressFeedbackColor;
+  final Duration? _refreshAfterChange;
   final bool _syncLocalClipboardToRemote;
 
   /// Immediately tries to establish a connection to a remote server at
@@ -61,42 +66,105 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   /// input. A server without the pseudo-encoding keeps drawing its cursor
   /// itself.
   ///
+  /// [encodings] are the real encodings announced to the server, in order of
+  /// preference, among [RemoteFrameBufferClient.supportedEncodings]: ZRLE,
+  /// ZLib, Hextile, CopyRect, Raw by default
+  /// ([RemoteFrameBufferClient.defaultEncodings]). Raw is added at the end
+  /// when missing. An empty list, a repeated encoding or an unsupported one
+  /// throws an [ArgumentError] here, before any connection. Like the other
+  /// options, it is read once, when the connection starts: give the widget a
+  /// new key to reconnect with another list.
+  ///
   /// With [pressFeedback] (the default), each press, mouse or touch, shows a
   /// halo at once, fading out in a quarter of a second, before the server's
   /// image arrives. It is drawn translucent in [pressFeedbackColor], the
   /// theme's primary colour by default.
+  ///
+  /// With [pipelineUpdateRequests] (the default), the next update request
+  /// leaves as soon as an update starts arriving. Set it to `false` to send
+  /// it only once the update is read, one round trip per update.
+  ///
+  /// Some servers (e.g. Qt 4 QWS) leave stale areas, never sent again. Two
+  /// options ask for the whole screen again (a non-incremental update
+  /// request), both off (`null`) by default:
+  /// - [fullRefreshInterval]: one request every [fullRefreshInterval];
+  /// - [refreshAfterChange]: one request [refreshAfterChange] after an
+  ///   update covering at least 20 % of the screen (a screen change). Another
+  ///   screen change before then pushes the request back. The update
+  ///   answering a refresh does not schedule another one.
+  ///
+  /// A duration that is not positive throws an [ArgumentError] here.
   RemoteFrameBufferWidget({
     super.key,
     final Widget? connectingWidget,
+    final List<RemoteFrameBufferEncodingType> encodings = defaultEncodings,
     final MouseCursor fallbackCursor = SystemMouseCursors.basic,
+    final Duration? fullRefreshInterval,
     required final String hostName,
     final bool localCursor = true,
     final void Function(Object error)? onError,
     final VoidCallback? onFirstFrame,
     final String? password,
+    final bool pipelineUpdateRequests = true,
     final RemoteFrameBufferPixelFormat pixelFormat =
         RemoteFrameBufferPixelFormat.rgb565,
     final int port = 5900,
     final bool pressFeedback = true,
     final Color? pressFeedbackColor,
+    final Duration? refreshAfterChange,
     final bool syncLocalClipboardToRemote = true,
   })  : _connectingWidget = optionOf(connectingWidget),
+        _encodings = RemoteFrameBufferClient.normalizeEncodings(encodings),
         _fallbackCursor = fallbackCursor,
+        _fullRefreshInterval = RemoteFrameBufferRefreshScheduler.checkDuration(
+          fullRefreshInterval,
+          'fullRefreshInterval',
+        ),
         _hostName = hostName,
         _localCursor = localCursor,
         _onError = optionOf(onError),
         _onFirstFrame = optionOf(onFirstFrame),
         _password = optionOf(password),
+        _pipelineUpdateRequests = pipelineUpdateRequests,
         _pixelFormat = pixelFormat,
         _port = port,
         _pressFeedback = pressFeedback,
         _pressFeedbackColor = optionOf(pressFeedbackColor),
+        _refreshAfterChange = RemoteFrameBufferRefreshScheduler.checkDuration(
+          refreshAfterChange,
+          'refreshAfterChange',
+        ),
         _syncLocalClipboardToRemote = syncLocalClipboardToRemote;
+
+  /// The real encodings the widget can show, ZRLE first: the choices for
+  /// [RemoteFrameBufferWidget.new]'s `encodings`, e.g. for a menu.
+  static const List<RemoteFrameBufferEncodingType> supportedEncodings =
+      RemoteFrameBufferClient.supportedEncodings;
+
+  /// The encodings announced by default: ZRLE, ZLib, Hextile, CopyRect, Raw.
+  static const List<RemoteFrameBufferEncodingType> defaultEncodings =
+      RemoteFrameBufferClient.defaultEncodings;
+
+  /// The real encodings announced, Raw included, passed to the RFB client.
+  @visibleForTesting
+  List<RemoteFrameBufferEncodingType> get encodings => _encodings;
 
   /// The system cursor shown with [localCursor] while no visible remote shape
   /// is drawn.
   @visibleForTesting
   MouseCursor get fallbackCursor => _fallbackCursor;
+
+  /// The period of the full screen refreshes, if any.
+  @visibleForTesting
+  Duration? get fullRefreshInterval => _fullRefreshInterval;
+
+  /// Whether update requests are pipelined, passed to the RFB client.
+  @visibleForTesting
+  bool get pipelineUpdateRequests => _pipelineUpdateRequests;
+
+  /// The delay of the full screen refresh after a screen change, if any.
+  @visibleForTesting
+  Duration? get refreshAfterChange => _refreshAfterChange;
 
   /// Whether the cursor is drawn locally, passed to the RFB client.
   @visibleForTesting
@@ -422,6 +490,11 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                   ),
                   // Delivered in update.cursor by dart_rfb, never here.
                   cursor: () async {},
+                  // Decoded to Raw by dart_rfb; still encoded only if its
+                  // data was bad.
+                  hextile: () async => _logger.warning(
+                    'Undecoded Hextile rectangle received from dart_rfb.',
+                  ),
                   raw: () async => (await updateFrameBuffer(
                     frameBuffer: frameBuffer,
                     frameBufferSize: Size(
@@ -435,6 +508,9 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                       'RemoteFrameBufferWidget: updateFrameBuffer $error',
                     ),
                     (final _) {},
+                  ),
+                  zlib: () async => _logger.warning(
+                    'Undecoded ZLib rectangle received from dart_rfb.',
                   ),
                   zrle: () async => _logger.warning(
                     'ZRLE rectangle received — decoding should happen upstream in dart_rfb.',
@@ -493,11 +569,15 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
       await Isolate.spawn(
         startRemoteFrameBufferClient,
         RemoteFrameBufferIsolateInitMessage(
+          encodings: widget._encodings,
+          fullRefreshInterval: widget._fullRefreshInterval,
           hostName: widget._hostName,
           localCursor: widget._localCursor,
           password: widget._password,
+          pipelineUpdateRequests: widget._pipelineUpdateRequests,
           pixelFormat: widget._pixelFormat,
           port: widget._port,
+          refreshAfterChange: widget._refreshAfterChange,
           sendPort: receivePort.sendPort,
         ),
         onError: receivePort.sendPort,

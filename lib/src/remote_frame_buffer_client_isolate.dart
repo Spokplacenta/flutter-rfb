@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:dart_rfb/dart_rfb.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_isolate_messages.dart';
+import 'package:flutter_rfb/src/remote_frame_buffer_refresh_scheduler.dart';
 import 'package:logging/logging.dart';
 import 'package:stream_transform/stream_transform.dart';
 
@@ -26,25 +27,47 @@ Future<void> startRemoteFrameBufferClient(
       },
     );
   final RemoteFrameBufferClient client = RemoteFrameBufferClient(
+    encodings: initMessage.encodings,
     localCursor: initMessage.localCursor,
+    pipelineUpdateRequests: initMessage.pipelineUpdateRequests,
     pixelFormat: initMessage.pixelFormat,
+  );
+  final RemoteFrameBufferRefreshScheduler refreshScheduler =
+      RemoteFrameBufferRefreshScheduler(
+    fullRefreshInterval: initMessage.fullRefreshInterval,
+    refreshAfterChange: initMessage.refreshAfterChange,
+    requestFullUpdate: () => client.requestUpdate(incremental: false),
   );
   final ReceivePort receivePort = ReceivePort();
   client.updateStream.listen(
     (final RemoteFrameBufferClientUpdate update) {
+      final int frameBufferHeight = client.config
+          .map((final Config config) => config.frameBufferHeight)
+          .getOrElse(() => 0);
+      final int frameBufferWidth = client.config
+          .map((final Config config) => config.frameBufferWidth)
+          .getOrElse(() => 0);
       initMessage.sendPort.send(
         RemoteFrameBufferIsolateReceiveMessage.frameBufferUpdate(
-          frameBufferHeight: client.config
-              .map((final Config config) => config.frameBufferHeight)
-              .getOrElse(() => 0),
-          frameBufferWidth: client.config
-              .map((final Config config) => config.frameBufferWidth)
-              .getOrElse(() => 0),
+          frameBufferHeight: frameBufferHeight,
+          frameBufferWidth: frameBufferWidth,
           sendPort: receivePort.sendPort,
           update: update,
         ),
       );
+      refreshScheduler.onUpdate(
+        update: update,
+        frameBufferWidth: frameBufferWidth,
+        frameBufferHeight: frameBufferHeight,
+      );
+      if (!initMessage.pipelineUpdateRequests) {
+        // Without pipelining, the next request leaves once this update is
+        // handed over.
+        client.requestUpdate();
+      }
     },
+    onDone: refreshScheduler.dispose,
+    onError: (final Object _) => refreshScheduler.dispose(),
   );
   client.serverClipBoardStream.listen(
     (final String text) => initMessage.sendPort.send(
@@ -94,12 +117,14 @@ Future<void> startRemoteFrameBufferClient(
   } on Exception catch (e, st) {
     // Même format que [Isolate.spawn] `onError` : évite une erreur « non gérée »
     // dans l’isolate pour un refus TCP / handshake attendu côté UI.
+    refreshScheduler.dispose();
     initMessage.sendPort.send(<Object>[e, st]);
     return;
   }
-  // The client pipelines update requests: this first one is the only request
-  // sent from here, the client then asks for the next update by itself.
+  // With pipelining, this first request is the only one sent from here: the
+  // client then asks for the next update by itself.
   client
     ..handleIncomingMessages()
     ..requestUpdate();
+  refreshScheduler.start();
 }

@@ -12,15 +12,27 @@ part 'remote_frame_buffer_isolate_messages.freezed.dart';
 class RemoteFrameBufferIsolateInitMessage
     with _$RemoteFrameBufferIsolateInitMessage {
   const factory RemoteFrameBufferIsolateInitMessage({
+    /// The real encodings announced, in order of preference.
+    required final List<RemoteFrameBufferEncodingType> encodings,
+
+    /// The period of the non-incremental update requests, if any.
+    required final Duration? fullRefreshInterval,
     required final String hostName,
 
     /// Whether the client announces the Cursor pseudo-encoding.
     required final bool localCursor,
     required final Option<String> password,
 
+    /// Whether the client pipelines its update requests.
+    required final bool pipelineUpdateRequests,
+
     /// The pixel format asked to the server.
     required final RemoteFrameBufferPixelFormat pixelFormat,
     required final int port,
+
+    /// The delay of the non-incremental update request after a screen
+    /// change, if any.
+    required final Duration? refreshAfterChange,
 
     /// The [SendPort] used for communicating with the caller.
     required final SendPort sendPort,

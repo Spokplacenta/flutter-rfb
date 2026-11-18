@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -70,12 +71,12 @@ class _Server {
 
   void send(final List<int> bytes) => _socket!.add(bytes);
 
-  /// The PointerEvent messages the client sent, as (buttons, x, y).
-  List<(int, int, int)> pointerEvents() {
+  /// The messages the client sent after the handshake, as (type, bytes).
+  List<(int, ByteData)> _messages() {
     final ByteData bytes = ByteData.sublistView(_received.toBytes());
     // ClientInit and the handshake replies: 12 + 1 + 1 bytes.
     int offset = 14;
-    final List<(int, int, int)> events = <(int, int, int)>[];
+    final List<(int, ByteData)> messages = <(int, ByteData)>[];
     while (offset < bytes.lengthInBytes) {
       final int type = bytes.getUint8(offset);
       final int length = switch (type) {
@@ -90,18 +91,38 @@ class _Server {
       if (offset + length > bytes.lengthInBytes) {
         break;
       }
-      if (type == 5) {
-        events.add(
-          (
-            bytes.getUint8(offset + 1),
-            bytes.getUint16(offset + 2),
-            bytes.getUint16(offset + 4),
-          ),
-        );
-      }
+      messages
+          .add((type, ByteData.sublistView(bytes, offset, offset + length)));
       offset += length;
     }
-    return events;
+    return messages;
+  }
+
+  /// The PointerEvent messages the client sent, as (buttons, x, y).
+  List<(int, int, int)> pointerEvents() => <(int, int, int)>[
+        for (final (int type, ByteData m) in _messages())
+          if (type == 5) (m.getUint8(1), m.getUint16(2), m.getUint16(4)),
+      ];
+
+  /// The incremental flag of each FramebufferUpdateRequest the client sent.
+  List<bool> updateRequests() => <bool>[
+        for (final (int type, ByteData m) in _messages())
+          if (type == 3) m.getUint8(1) == 1,
+      ];
+
+  /// The encodings of the last SetEncodings the client sent.
+  List<int>? encodings() {
+    final Iterable<ByteData> sets = <ByteData>[
+      for (final (int type, ByteData m) in _messages())
+        if (type == 2) m,
+    ];
+    if (sets.isEmpty) {
+      return null;
+    }
+    final ByteData m = sets.last;
+    return <int>[
+      for (int i = 0; i < m.getUint16(2); i++) m.getInt32(4 + 4 * i),
+    ];
   }
 
   Future<void> close() async {
@@ -282,5 +303,262 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await settle();
+  });
+
+  testWidgets('ZLib and Hextile updates are displayed', (
+    final WidgetTester tester,
+  ) async {
+    final _Server server = (await tester.runAsync(_Server.start))!;
+    addTearDown(() => tester.runAsync(server.close));
+    Future<void> settle([final int milliseconds = 50]) async {
+      await tester.runAsync(
+        () => Future<void>.delayed(Duration(milliseconds: milliseconds)),
+      );
+      server.handshake();
+      await tester.pump();
+    }
+
+    Future<void> until(final bool Function() condition) async {
+      for (int i = 0; i < 100 && !condition(); i++) {
+        await settle(20);
+      }
+      expect(condition(), isTrue);
+    }
+
+    /// The RGBA pixels of the displayed image.
+    Future<List<int>?> pixels() async {
+      final Finder finder = find.byType(RawImage);
+      if (finder.evaluate().isEmpty) {
+        return null;
+      }
+      final ui.Image image = tester.widget<RawImage>(finder).image!;
+      final ByteData? data = await tester.runAsync<ByteData?>(image.toByteData);
+      return data!.buffer.asUint8List();
+    }
+
+    // The client's zlib stream lives as long as the connection.
+    final RawZLibFilter deflater = RawZLibFilter.deflateFilter();
+    List<int> zlib(final List<int> data) {
+      deflater.process(data, 0, data.length);
+      final List<int> out = <int>[];
+      List<int>? chunk;
+      while ((chunk = deflater.processed()) != null) {
+        out.addAll(chunk!);
+      }
+      return <int>[
+        ...(ByteData(4)..setUint32(0, out.length)).buffer.asUint8List(),
+        ...out,
+      ];
+    }
+
+    // rgb565, little endian.
+    const List<int> red = <int>[0x00, 0xF8];
+    const List<int> green = <int>[0xE0, 0x07];
+    const List<int> blue = <int>[0x1F, 0x00];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RemoteFrameBufferWidget(
+          connectingWidget: const SizedBox(),
+          hostName: '127.0.0.1',
+          port: server.port,
+          syncLocalClipboardToRemote: false,
+        ),
+      ),
+    );
+    await until(() => server.handshakeDone);
+    await until(() => server.encodings() != null);
+    // ZRLE first, so that x11vnc keeps it; ZLib next for servers without it.
+    expect(server.encodings(), <int>[16, 6, 5, 1, 0, -239]);
+
+    server.send(<int>[
+      0, 0, 0, 2,
+      0, 0, 0, 0, 0, _width, 0, 1, 0, 0, 0, 6, // ZLib, top row
+      ...zlib(<int>[for (int i = 0; i < _width; i++) ...red]),
+      0, 0, 0, 1, 0, _width, 0, 1, 0, 0, 0, 5, // Hextile, bottom row
+      2, ...blue, // one tile, background only
+    ]);
+    await until(() => find.byType(RawImage).evaluate().isNotEmpty);
+    List<int> at(final List<int> rgba, final int x, final int y) =>
+        rgba.sublist((y * _width + x) * 4, (y * _width + x) * 4 + 4);
+    List<int> rgba = (await pixels())!;
+    expect(at(rgba, 0, 0), <int>[255, 0, 0, 255]);
+    expect(at(rgba, _width - 1, 0), <int>[255, 0, 0, 255]);
+    expect(at(rgba, 0, 1), <int>[0, 0, 255, 255]);
+    expect(at(rgba, _width - 1, 1), <int>[0, 0, 255, 255]);
+
+    // A second ZLib rectangle on the same stream.
+    server.send(<int>[
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      6,
+      ...zlib(green),
+    ]);
+    for (int i = 0; i < 100; i++) {
+      rgba = (await pixels())!;
+      if (at(rgba, 0, 0)[1] == 255) {
+        break;
+      }
+      await settle(20);
+    }
+    expect(at(rgba, 0, 0), <int>[0, 255, 0, 255]);
+    expect(at(rgba, 1, 0), <int>[255, 0, 0, 255]);
+
+    await tester.pumpWidget(const SizedBox());
+    await settle();
+  });
+
+  testWidgets('the chosen encodings reach the server', (
+    final WidgetTester tester,
+  ) async {
+    final _Server server = (await tester.runAsync(_Server.start))!;
+    addTearDown(() => tester.runAsync(server.close));
+    for (int i = 0; i < 100 && server.encodings() == null; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      server.handshake();
+      if (i == 0) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: RemoteFrameBufferWidget(
+              connectingWidget: const SizedBox(),
+              encodings: const <RemoteFrameBufferEncodingType>[
+                RemoteFrameBufferEncodingType.hextile(),
+                RemoteFrameBufferEncodingType.zlib(),
+              ],
+              hostName: '127.0.0.1',
+              port: server.port,
+              syncLocalClipboardToRemote: false,
+            ),
+          ),
+        );
+      }
+      await tester.pump();
+    }
+    // In the order asked, Raw added, then the Cursor pseudo-encoding.
+    expect(server.encodings(), <int>[5, 6, 0, -239]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+  });
+
+  group('update requests', () {
+    /// Shows a widget connected to a new server, built by [build], and
+    /// returns the server once the client asked for its first update.
+    Future<_Server> connect(
+      final WidgetTester tester,
+      final Widget Function(int port) build,
+    ) async {
+      final _Server server = (await tester.runAsync(_Server.start))!;
+      addTearDown(() => tester.runAsync(server.close));
+      for (int i = 0; i < 100 && server.updateRequests().isEmpty; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        server.handshake();
+        if (i == 0) {
+          await tester.pumpWidget(MaterialApp(home: build(server.port)));
+        }
+        await tester.pump();
+      }
+      expect(server.updateRequests(), <bool>[true]);
+      return server;
+    }
+
+    Future<void> wait(
+      final WidgetTester tester,
+      final int milliseconds,
+    ) async {
+      await tester.runAsync(
+        () => Future<void>.delayed(Duration(milliseconds: milliseconds)),
+      );
+      await tester.pump();
+    }
+
+    Future<void> disconnect(final WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await wait(tester, 50);
+    }
+
+    testWidgets('without pipelining, the next request waits for the update', (
+      final WidgetTester tester,
+    ) async {
+      final _Server server = await connect(
+        tester,
+        (final int port) => RemoteFrameBufferWidget(
+          connectingWidget: const SizedBox(),
+          hostName: '127.0.0.1',
+          pipelineUpdateRequests: false,
+          port: port,
+          syncLocalClipboardToRemote: false,
+        ),
+      );
+      final List<int> update = _rawUpdate();
+      // The header only: a pipelining client would ask now.
+      server.send(update.sublist(0, 16));
+      await wait(tester, 200);
+      expect(server.updateRequests(), <bool>[true]);
+      server.send(update.sublist(16));
+      for (int i = 0; i < 50 && server.updateRequests().length < 2; i++) {
+        await wait(tester, 20);
+      }
+      expect(server.updateRequests(), <bool>[true, true]);
+      await disconnect(tester);
+    });
+
+    testWidgets(
+        'refreshAfterChange asks for the whole screen once after a screen '
+        'change, and not again after the answer', (
+      final WidgetTester tester,
+    ) async {
+      final _Server server = await connect(
+        tester,
+        (final int port) => RemoteFrameBufferWidget(
+          connectingWidget: const SizedBox(),
+          hostName: '127.0.0.1',
+          port: port,
+          refreshAfterChange: const Duration(milliseconds: 150),
+          syncLocalClipboardToRemote: false,
+        ),
+      );
+      List<bool> fullRequests() => <bool>[
+            for (final bool incremental in server.updateRequests())
+              if (!incremental) false,
+          ];
+      // A screen change: the whole 4x2 screen.
+      server.send(_rawUpdate());
+      await wait(tester, 50);
+      expect(fullRequests(), isEmpty, reason: 'not before the delay');
+      for (int i = 0; i < 50 && fullRequests().isEmpty; i++) {
+        await wait(tester, 20);
+      }
+      expect(fullRequests(), hasLength(1));
+      // The answer, the whole screen again, must not loop.
+      server.send(_rawUpdate());
+      await wait(tester, 600);
+      expect(fullRequests(), hasLength(1));
+      // A new screen change is refreshed again.
+      server.send(_rawUpdate());
+      for (int i = 0; i < 50 && fullRequests().length < 2; i++) {
+        await wait(tester, 20);
+      }
+      expect(fullRequests(), hasLength(2));
+      await disconnect(tester);
+    });
   });
 }

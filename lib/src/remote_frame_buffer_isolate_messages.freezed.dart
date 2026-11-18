@@ -16,16 +16,29 @@ final _privateConstructorUsedError = UnsupportedError(
 
 /// @nodoc
 mixin _$RemoteFrameBufferIsolateInitMessage {
+  /// The real encodings announced, in order of preference.
+  List<RemoteFrameBufferEncodingType> get encodings =>
+      throw _privateConstructorUsedError;
+
+  /// The period of the non-incremental update requests, if any.
+  Duration? get fullRefreshInterval => throw _privateConstructorUsedError;
   String get hostName => throw _privateConstructorUsedError;
 
   /// Whether the client announces the Cursor pseudo-encoding.
   bool get localCursor => throw _privateConstructorUsedError;
   Option<String> get password => throw _privateConstructorUsedError;
 
+  /// Whether the client pipelines its update requests.
+  bool get pipelineUpdateRequests => throw _privateConstructorUsedError;
+
   /// The pixel format asked to the server.
   RemoteFrameBufferPixelFormat get pixelFormat =>
       throw _privateConstructorUsedError;
   int get port => throw _privateConstructorUsedError;
+
+  /// The delay of the non-incremental update request after a screen
+  /// change, if any.
+  Duration? get refreshAfterChange => throw _privateConstructorUsedError;
 
   /// The [SendPort] used for communicating with the caller.
   SendPort get sendPort => throw _privateConstructorUsedError;
@@ -45,11 +58,15 @@ abstract class $RemoteFrameBufferIsolateInitMessageCopyWith<$Res> {
           RemoteFrameBufferIsolateInitMessage>;
   @useResult
   $Res call(
-      {String hostName,
+      {List<RemoteFrameBufferEncodingType> encodings,
+      Duration? fullRefreshInterval,
+      String hostName,
       bool localCursor,
       Option<String> password,
+      bool pipelineUpdateRequests,
       RemoteFrameBufferPixelFormat pixelFormat,
       int port,
+      Duration? refreshAfterChange,
       SendPort sendPort});
 }
 
@@ -67,14 +84,26 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
   @pragma('vm:prefer-inline')
   @override
   $Res call({
+    Object? encodings = null,
+    Object? fullRefreshInterval = freezed,
     Object? hostName = null,
     Object? localCursor = null,
     Object? password = null,
+    Object? pipelineUpdateRequests = null,
     Object? pixelFormat = null,
     Object? port = null,
+    Object? refreshAfterChange = freezed,
     Object? sendPort = null,
   }) {
     return _then(_value.copyWith(
+      encodings: null == encodings
+          ? _value.encodings
+          : encodings // ignore: cast_nullable_to_non_nullable
+              as List<RemoteFrameBufferEncodingType>,
+      fullRefreshInterval: freezed == fullRefreshInterval
+          ? _value.fullRefreshInterval
+          : fullRefreshInterval // ignore: cast_nullable_to_non_nullable
+              as Duration?,
       hostName: null == hostName
           ? _value.hostName
           : hostName // ignore: cast_nullable_to_non_nullable
@@ -87,6 +116,10 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
           ? _value.password
           : password // ignore: cast_nullable_to_non_nullable
               as Option<String>,
+      pipelineUpdateRequests: null == pipelineUpdateRequests
+          ? _value.pipelineUpdateRequests
+          : pipelineUpdateRequests // ignore: cast_nullable_to_non_nullable
+              as bool,
       pixelFormat: null == pixelFormat
           ? _value.pixelFormat
           : pixelFormat // ignore: cast_nullable_to_non_nullable
@@ -95,6 +128,10 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
           ? _value.port
           : port // ignore: cast_nullable_to_non_nullable
               as int,
+      refreshAfterChange: freezed == refreshAfterChange
+          ? _value.refreshAfterChange
+          : refreshAfterChange // ignore: cast_nullable_to_non_nullable
+              as Duration?,
       sendPort: null == sendPort
           ? _value.sendPort
           : sendPort // ignore: cast_nullable_to_non_nullable
@@ -113,11 +150,15 @@ abstract class _$$_RemoteFrameBufferIsolateInitMessageCopyWith<$Res>
   @override
   @useResult
   $Res call(
-      {String hostName,
+      {List<RemoteFrameBufferEncodingType> encodings,
+      Duration? fullRefreshInterval,
+      String hostName,
       bool localCursor,
       Option<String> password,
+      bool pipelineUpdateRequests,
       RemoteFrameBufferPixelFormat pixelFormat,
       int port,
+      Duration? refreshAfterChange,
       SendPort sendPort});
 }
 
@@ -134,14 +175,26 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
   @pragma('vm:prefer-inline')
   @override
   $Res call({
+    Object? encodings = null,
+    Object? fullRefreshInterval = freezed,
     Object? hostName = null,
     Object? localCursor = null,
     Object? password = null,
+    Object? pipelineUpdateRequests = null,
     Object? pixelFormat = null,
     Object? port = null,
+    Object? refreshAfterChange = freezed,
     Object? sendPort = null,
   }) {
     return _then(_$_RemoteFrameBufferIsolateInitMessage(
+      encodings: null == encodings
+          ? _value._encodings
+          : encodings // ignore: cast_nullable_to_non_nullable
+              as List<RemoteFrameBufferEncodingType>,
+      fullRefreshInterval: freezed == fullRefreshInterval
+          ? _value.fullRefreshInterval
+          : fullRefreshInterval // ignore: cast_nullable_to_non_nullable
+              as Duration?,
       hostName: null == hostName
           ? _value.hostName
           : hostName // ignore: cast_nullable_to_non_nullable
@@ -154,6 +207,10 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
           ? _value.password
           : password // ignore: cast_nullable_to_non_nullable
               as Option<String>,
+      pipelineUpdateRequests: null == pipelineUpdateRequests
+          ? _value.pipelineUpdateRequests
+          : pipelineUpdateRequests // ignore: cast_nullable_to_non_nullable
+              as bool,
       pixelFormat: null == pixelFormat
           ? _value.pixelFormat
           : pixelFormat // ignore: cast_nullable_to_non_nullable
@@ -162,6 +219,10 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
           ? _value.port
           : port // ignore: cast_nullable_to_non_nullable
               as int,
+      refreshAfterChange: freezed == refreshAfterChange
+          ? _value.refreshAfterChange
+          : refreshAfterChange // ignore: cast_nullable_to_non_nullable
+              as Duration?,
       sendPort: null == sendPort
           ? _value.sendPort
           : sendPort // ignore: cast_nullable_to_non_nullable
@@ -176,13 +237,32 @@ class _$_RemoteFrameBufferIsolateInitMessage
     with DiagnosticableTreeMixin
     implements _RemoteFrameBufferIsolateInitMessage {
   const _$_RemoteFrameBufferIsolateInitMessage(
-      {required this.hostName,
+      {required final List<RemoteFrameBufferEncodingType> encodings,
+      required this.fullRefreshInterval,
+      required this.hostName,
       required this.localCursor,
       required this.password,
+      required this.pipelineUpdateRequests,
       required this.pixelFormat,
       required this.port,
-      required this.sendPort});
+      required this.refreshAfterChange,
+      required this.sendPort})
+      : _encodings = encodings;
 
+  /// The real encodings announced, in order of preference.
+  final List<RemoteFrameBufferEncodingType> _encodings;
+
+  /// The real encodings announced, in order of preference.
+  @override
+  List<RemoteFrameBufferEncodingType> get encodings {
+    if (_encodings is EqualUnmodifiableListView) return _encodings;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_encodings);
+  }
+
+  /// The period of the non-incremental update requests, if any.
+  @override
+  final Duration? fullRefreshInterval;
   @override
   final String hostName;
 
@@ -192,11 +272,20 @@ class _$_RemoteFrameBufferIsolateInitMessage
   @override
   final Option<String> password;
 
+  /// Whether the client pipelines its update requests.
+  @override
+  final bool pipelineUpdateRequests;
+
   /// The pixel format asked to the server.
   @override
   final RemoteFrameBufferPixelFormat pixelFormat;
   @override
   final int port;
+
+  /// The delay of the non-incremental update request after a screen
+  /// change, if any.
+  @override
+  final Duration? refreshAfterChange;
 
   /// The [SendPort] used for communicating with the caller.
   @override
@@ -204,7 +293,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'RemoteFrameBufferIsolateInitMessage(hostName: $hostName, localCursor: $localCursor, password: $password, pixelFormat: $pixelFormat, port: $port, sendPort: $sendPort)';
+    return 'RemoteFrameBufferIsolateInitMessage(encodings: $encodings, fullRefreshInterval: $fullRefreshInterval, hostName: $hostName, localCursor: $localCursor, password: $password, pipelineUpdateRequests: $pipelineUpdateRequests, pixelFormat: $pixelFormat, port: $port, refreshAfterChange: $refreshAfterChange, sendPort: $sendPort)';
   }
 
   @override
@@ -212,11 +301,16 @@ class _$_RemoteFrameBufferIsolateInitMessage
     super.debugFillProperties(properties);
     properties
       ..add(DiagnosticsProperty('type', 'RemoteFrameBufferIsolateInitMessage'))
+      ..add(DiagnosticsProperty('encodings', encodings))
+      ..add(DiagnosticsProperty('fullRefreshInterval', fullRefreshInterval))
       ..add(DiagnosticsProperty('hostName', hostName))
       ..add(DiagnosticsProperty('localCursor', localCursor))
       ..add(DiagnosticsProperty('password', password))
+      ..add(
+          DiagnosticsProperty('pipelineUpdateRequests', pipelineUpdateRequests))
       ..add(DiagnosticsProperty('pixelFormat', pixelFormat))
       ..add(DiagnosticsProperty('port', port))
+      ..add(DiagnosticsProperty('refreshAfterChange', refreshAfterChange))
       ..add(DiagnosticsProperty('sendPort', sendPort));
   }
 
@@ -225,23 +319,40 @@ class _$_RemoteFrameBufferIsolateInitMessage
     return identical(this, other) ||
         (other.runtimeType == runtimeType &&
             other is _$_RemoteFrameBufferIsolateInitMessage &&
+            const DeepCollectionEquality()
+                .equals(other._encodings, _encodings) &&
+            (identical(other.fullRefreshInterval, fullRefreshInterval) ||
+                other.fullRefreshInterval == fullRefreshInterval) &&
             (identical(other.hostName, hostName) ||
                 other.hostName == hostName) &&
             (identical(other.localCursor, localCursor) ||
                 other.localCursor == localCursor) &&
             (identical(other.password, password) ||
                 other.password == password) &&
+            (identical(other.pipelineUpdateRequests, pipelineUpdateRequests) ||
+                other.pipelineUpdateRequests == pipelineUpdateRequests) &&
             (identical(other.pixelFormat, pixelFormat) ||
                 other.pixelFormat == pixelFormat) &&
             (identical(other.port, port) || other.port == port) &&
+            (identical(other.refreshAfterChange, refreshAfterChange) ||
+                other.refreshAfterChange == refreshAfterChange) &&
             (identical(other.sendPort, sendPort) ||
                 other.sendPort == sendPort));
   }
 
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, hostName, localCursor, password, pixelFormat,
-      port, sendPort);
+  int get hashCode => Object.hash(
+      runtimeType,
+      const DeepCollectionEquality().hash(_encodings),
+      fullRefreshInterval,
+      hostName,
+      localCursor,
+      password,
+      pipelineUpdateRequests,
+      pixelFormat,
+      port,
+      refreshAfterChange,
+      sendPort);
 
   @JsonKey(ignore: true)
   @override
@@ -255,14 +366,26 @@ class _$_RemoteFrameBufferIsolateInitMessage
 abstract class _RemoteFrameBufferIsolateInitMessage
     implements RemoteFrameBufferIsolateInitMessage {
   const factory _RemoteFrameBufferIsolateInitMessage(
-          {required final String hostName,
+          {required final List<RemoteFrameBufferEncodingType> encodings,
+          required final Duration? fullRefreshInterval,
+          required final String hostName,
           required final bool localCursor,
           required final Option<String> password,
+          required final bool pipelineUpdateRequests,
           required final RemoteFrameBufferPixelFormat pixelFormat,
           required final int port,
+          required final Duration? refreshAfterChange,
           required final SendPort sendPort}) =
       _$_RemoteFrameBufferIsolateInitMessage;
 
+  @override
+
+  /// The real encodings announced, in order of preference.
+  List<RemoteFrameBufferEncodingType> get encodings;
+  @override
+
+  /// The period of the non-incremental update requests, if any.
+  Duration? get fullRefreshInterval;
   @override
   String get hostName;
   @override
@@ -273,10 +396,19 @@ abstract class _RemoteFrameBufferIsolateInitMessage
   Option<String> get password;
   @override
 
+  /// Whether the client pipelines its update requests.
+  bool get pipelineUpdateRequests;
+  @override
+
   /// The pixel format asked to the server.
   RemoteFrameBufferPixelFormat get pixelFormat;
   @override
   int get port;
+  @override
+
+  /// The delay of the non-incremental update request after a screen
+  /// change, if any.
+  Duration? get refreshAfterChange;
   @override
 
   /// The [SendPort] used for communicating with the caller.
