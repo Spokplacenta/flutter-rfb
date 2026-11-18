@@ -1,6 +1,7 @@
 import 'dart:isolate';
 import 'dart:ui';
 
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter/widgets.dart' hide Image;
 import 'package:flutter_rfb/flutter_rfb.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_isolate_messages.dart';
@@ -23,6 +24,7 @@ Future<Image> _cursorImage(final WidgetTester tester) async =>
 Widget _build({
   required final Option<Image> cursorImage,
   final bool withCursor = true,
+  final MouseCursor fallbackCursor = SystemMouseCursors.basic,
   final bool pressFeedback = true,
   final Size size = _widgetSize,
   final double parentScale = 1,
@@ -46,6 +48,7 @@ Widget _build({
                       ),
                     )
                   : none(),
+              fallbackCursor: fallbackCursor,
               frameBufferHeight: 2,
               frameBufferWidth: 4,
               pressFeedback: pressFeedback,
@@ -63,14 +66,9 @@ RemoteFrameBufferLocalFeedbackState _state(final WidgetTester tester) =>
       find.byType(RemoteFrameBufferLocalFeedback),
     );
 
-MouseCursor _mouseCursor(final WidgetTester tester) => tester
-    .widget<MouseRegion>(
-      find.descendant(
-        of: find.byType(RemoteFrameBufferLocalFeedback),
-        matching: find.byType(MouseRegion),
-      ),
-    )
-    .cursor;
+/// The cursor the mouse (device 1, the default of mouse gestures) shows.
+MouseCursor? _activeCursor() =>
+    RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1);
 
 Future<TestGesture> _mouseAt(
   final WidgetTester tester,
@@ -126,26 +124,65 @@ void main() {
       expect(_state(tester).cursorRect, const Rect.fromLTWH(5, -8, 20, 30));
     });
 
-    testWidgets('hides the system cursor while a remote cursor is known', (
+    testWidgets('hides the system cursor while a visible shape is drawn', (
       final WidgetTester tester,
     ) async {
       final Image image = await _cursorImage(tester);
       addTearDown(image.dispose);
       await tester.pumpWidget(_build(cursorImage: some(image)));
-      expect(_mouseCursor(tester), SystemMouseCursors.none);
-      await tester.pumpWidget(
-        _build(cursorImage: some(image), withCursor: false),
-      );
-      expect(_mouseCursor(tester), MouseCursor.defer);
+      await _mouseAt(tester, const Offset(15, 12));
+      expect(_activeCursor(), SystemMouseCursors.none);
+      expect(_state(tester).cursorRect, isNotNull);
     });
 
-    testWidgets('an invisible remote cursor draws nothing', (
+    testWidgets('shows the fallback cursor before any shape arrives', (
+      final WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _build(cursorImage: none(), withCursor: false),
+      );
+      await _mouseAt(tester, const Offset(15, 12));
+      expect(_activeCursor(), SystemMouseCursors.basic);
+      expect(_state(tester).cursorRect, isNull);
+    });
+
+    testWidgets('an invisible (0x0) shape shows the fallback cursor', (
       final WidgetTester tester,
     ) async {
       await tester.pumpWidget(_build(cursorImage: none()));
       await _mouseAt(tester, const Offset(15, 12));
       expect(_state(tester).cursorRect, isNull);
-      expect(_mouseCursor(tester), SystemMouseCursors.none);
+      expect(_activeCursor(), SystemMouseCursors.basic);
+    });
+
+    testWidgets('follows visible and invisible shapes while hovering', (
+      final WidgetTester tester,
+    ) async {
+      final Image image = await _cursorImage(tester);
+      addTearDown(image.dispose);
+      await tester.pumpWidget(_build(cursorImage: some(image)));
+      // The mouse stays over the widget from here on.
+      await _mouseAt(tester, const Offset(15, 12));
+      expect(_activeCursor(), SystemMouseCursors.none);
+      await tester.pumpWidget(_build(cursorImage: none()));
+      expect(_activeCursor(), SystemMouseCursors.basic);
+      expect(_state(tester).cursorRect, isNull);
+      await tester.pumpWidget(_build(cursorImage: some(image)));
+      expect(_activeCursor(), SystemMouseCursors.none);
+      expect(_state(tester).cursorRect, const Rect.fromLTWH(5, -8, 20, 30));
+    });
+
+    testWidgets('the fallback cursor can be chosen', (
+      final WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        _build(
+          cursorImage: none(),
+          fallbackCursor: SystemMouseCursors.precise,
+        ),
+      );
+      await _mouseAt(tester, const Offset(15, 12));
+      expect(_activeCursor(), SystemMouseCursors.precise);
     });
 
     testWidgets('is not drawn for touch input', (
@@ -280,6 +317,7 @@ void main() {
                   hotspotY: _hotspotY,
                 ),
               ),
+              fallbackCursor: SystemMouseCursors.basic,
               frameBufferHeight: 2,
               frameBufferWidth: 4,
               pressFeedback: true,
@@ -312,19 +350,22 @@ void main() {
   });
 
   group('RemoteFrameBufferWidget options', () {
-    test('local cursor and press feedback are on by default', () {
+    test('local cursor and press feedback are on, with an arrow fallback', () {
       final RemoteFrameBufferWidget widget =
           RemoteFrameBufferWidget(hostName: 'localhost');
       expect(widget.localCursor, isTrue);
       expect(widget.pressFeedback, isTrue);
+      expect(widget.fallbackCursor, SystemMouseCursors.basic);
     });
 
-    test('local cursor and press feedback can be disabled', () {
+    test('the options can be changed', () {
       final RemoteFrameBufferWidget widget = RemoteFrameBufferWidget(
+        fallbackCursor: SystemMouseCursors.precise,
         hostName: 'localhost',
         localCursor: false,
         pressFeedback: false,
       );
+      expect(widget.fallbackCursor, SystemMouseCursors.precise);
       expect(widget.localCursor, isFalse);
       expect(widget.pressFeedback, isFalse);
     });

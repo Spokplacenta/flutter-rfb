@@ -24,6 +24,7 @@ final Logger _logger = Logger('RemoteFrameBufferWidget');
 /// in an isolate. On success, it runs the read loop in that isolate.
 class RemoteFrameBufferWidget extends StatefulWidget {
   final Option<Widget> _connectingWidget;
+  final MouseCursor _fallbackCursor;
   final String _hostName;
   final bool _localCursor;
   final Option<void Function(Object error)> _onError;
@@ -54,8 +55,11 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   /// shape (Cursor pseudo-encoding) instead of drawing it into the
   /// framebuffer. The widget draws it at the mouse at each frame, without
   /// waiting for the server, and hides the system cursor over the
-  /// framebuffer meanwhile. Nothing is drawn for touch input. A server
-  /// without the pseudo-encoding keeps drawing its cursor itself.
+  /// framebuffer meanwhile. Until a shape arrives, or while the server's
+  /// shape is invisible (0x0), [fallbackCursor] is shown instead,
+  /// [SystemMouseCursors.basic] by default. Nothing is drawn for touch
+  /// input. A server without the pseudo-encoding keeps drawing its cursor
+  /// itself.
   ///
   /// With [pressFeedback] (the default), each press, mouse or touch, shows a
   /// halo at once, fading out in a quarter of a second, before the server's
@@ -64,6 +68,7 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   RemoteFrameBufferWidget({
     super.key,
     final Widget? connectingWidget,
+    final MouseCursor fallbackCursor = SystemMouseCursors.basic,
     required final String hostName,
     final bool localCursor = true,
     final void Function(Object error)? onError,
@@ -76,6 +81,7 @@ class RemoteFrameBufferWidget extends StatefulWidget {
     final Color? pressFeedbackColor,
     final bool syncLocalClipboardToRemote = true,
   })  : _connectingWidget = optionOf(connectingWidget),
+        _fallbackCursor = fallbackCursor,
         _hostName = hostName,
         _localCursor = localCursor,
         _onError = optionOf(onError),
@@ -86,6 +92,11 @@ class RemoteFrameBufferWidget extends StatefulWidget {
         _pressFeedback = pressFeedback,
         _pressFeedbackColor = optionOf(pressFeedbackColor),
         _syncLocalClipboardToRemote = syncLocalClipboardToRemote;
+
+  /// The system cursor shown with [localCursor] while no visible remote shape
+  /// is drawn.
+  @visibleForTesting
+  MouseCursor get fallbackCursor => _fallbackCursor;
 
   /// Whether the cursor is drawn locally, passed to the RFB client.
   @visibleForTesting
@@ -212,6 +223,11 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
               cursor: widget._localCursor
                   ? _cursor
                   : none<RemoteFrameBufferCursorImage>(),
+              // Without localCursor, the server draws the cursor in the image
+              // and the cursor of the ancestors applies.
+              fallbackCursor: widget._localCursor
+                  ? widget._fallbackCursor
+                  : MouseCursor.defer,
               frameBufferHeight: image.height,
               frameBufferWidth: image.width,
               pressFeedback: widget._pressFeedback,

@@ -60,6 +60,7 @@ class MyApp extends StatelessWidget {
 
 - `pixelFormat`: the pixel format asked to the server, `RemoteFrameBufferPixelFormat.rgb565` (16 bits) by default.
 - `localCursor` (default `true`): the cursor is drawn locally at the mouse, without waiting for the server, when the server supports the Cursor pseudo-encoding. Nothing is drawn for touch input.
+- `fallbackCursor` (default `SystemMouseCursors.basic`): with `localCursor`, the system cursor shown until the server's cursor shape arrives, or while that shape is invisible (0x0, as some HMIs send). The system cursor is hidden only while a visible remote shape is drawn.
 - `pressFeedback` (default `true`) and `pressFeedbackColor`: a halo shown at once at each press, fading out in 250 ms.
 - `syncLocalClipboardToRemote` (default `true`): push the local clipboard to the server.
 

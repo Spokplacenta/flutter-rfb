@@ -28,8 +28,10 @@ class RemoteFrameBufferCursorImage {
 /// Local feedback drawn over the framebuffer, without waiting for the server:
 ///
 /// - the remote [cursor] at the mouse, at each frame, the system cursor being
-///   hidden over the widget while a remote cursor is known. Nothing is drawn
-///   for touch or stylus input;
+///   hidden over the widget while a visible remote shape is drawn. Until a
+///   shape arrives, or when the server sends an invisible one (0x0), the
+///   [fallbackCursor] is shown instead, so the mouse never loses its
+///   pointer. Nothing is drawn for touch or stylus input;
 /// - with [pressFeedback], a halo at each press (mouse or touch) that fades
 ///   out in [pressFeedbackDuration].
 ///
@@ -45,6 +47,9 @@ class RemoteFrameBufferLocalFeedback extends StatefulWidget {
 
   final Widget child;
   final Option<RemoteFrameBufferCursorImage> cursor;
+
+  /// The system cursor shown while no visible remote shape is drawn.
+  final MouseCursor fallbackCursor;
   final int frameBufferHeight;
   final int frameBufferWidth;
   final bool pressFeedback;
@@ -54,6 +59,7 @@ class RemoteFrameBufferLocalFeedback extends StatefulWidget {
     super.key,
     required this.child,
     required this.cursor,
+    required this.fallbackCursor,
     required this.frameBufferHeight,
     required this.frameBufferWidth,
     required this.pressFeedback,
@@ -91,9 +97,13 @@ class RemoteFrameBufferLocalFeedbackState
       ..color = widget.pressFeedbackColor
       ..frameBufferHeight = widget.frameBufferHeight
       ..frameBufferWidth = widget.frameBufferWidth;
+    final bool drawsCursor = widget.cursor
+        .flatMap((final RemoteFrameBufferCursorImage cursor) => cursor.image)
+        .isSome();
     return MouseRegion(
-      cursor:
-          widget.cursor.isSome() ? SystemMouseCursors.none : MouseCursor.defer,
+      // Changing it while hovering takes effect at the next frame, without
+      // the mouse leaving the widget.
+      cursor: drawsCursor ? SystemMouseCursors.none : widget.fallbackCursor,
       onEnter: _trackMouse,
       onExit: (final _) => _model.setPointer(null),
       onHover: _trackMouse,

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_rfb/flutter_rfb.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_local_feedback.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -127,10 +128,19 @@ List<int> _cursorUpdate() => <int>[
       0xC0, 0xC0, 0xC0, // mask: every pixel shown
     ];
 
+/// A FramebufferUpdate with an invisible (0x0) cursor only, as sent by some
+/// HMIs.
+const List<int> _invisibleCursorUpdate = <int>[
+  0, 0, 0, 1,
+  0, 0, 0, 0, 0, 0, 0, 0, // hotspot, 0x0
+  0xFF, 0xFF, 0xFF, 0x11, // Cursor (-239), no data
+];
+
 void main() {
   testWidgets(
       'clicks reach the server inside InteractiveViewer and RotatedBox, '
-      'while an update is arriving and when a cursor shape comes',
+      'while an update is arriving and when a cursor shape comes; '
+      'the fallback cursor follows invisible shapes',
       (final WidgetTester tester) async {
     final _Server server = (await tester.runAsync(_Server.start))!;
     addTearDown(() => tester.runAsync(server.close));
@@ -254,6 +264,21 @@ void main() {
       sentWhilePressed: _cursorUpdate(),
     );
     await expectClick('touch, cursor during the press');
+
+    // Hovering: the visible shape hides the system cursor, an invisible one
+    // brings the fallback arrow back, without the mouse leaving.
+    final TestGesture mouse =
+        await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: center);
+    await settle();
+    MouseCursor? activeCursor() =>
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1);
+    expect(activeCursor(), SystemMouseCursors.none);
+    server.send(_invisibleCursorUpdate);
+    await until(() => activeCursor() == SystemMouseCursors.basic);
+    server.send(_cursorUpdate());
+    await until(() => activeCursor() == SystemMouseCursors.none);
+    await mouse.removePointer();
 
     await tester.pumpWidget(const SizedBox());
     await settle();
