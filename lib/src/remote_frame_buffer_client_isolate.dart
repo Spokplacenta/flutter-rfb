@@ -26,6 +26,7 @@ Future<void> startRemoteFrameBufferClient(
       },
     );
   final RemoteFrameBufferClient client = RemoteFrameBufferClient(
+    localCursor: initMessage.localCursor,
     pixelFormat: initMessage.pixelFormat,
   );
   final ReceivePort receivePort = ReceivePort();

@@ -17,6 +17,9 @@ final _privateConstructorUsedError = UnsupportedError(
 /// @nodoc
 mixin _$RemoteFrameBufferIsolateInitMessage {
   String get hostName => throw _privateConstructorUsedError;
+
+  /// Whether the client announces the Cursor pseudo-encoding.
+  bool get localCursor => throw _privateConstructorUsedError;
   Option<String> get password => throw _privateConstructorUsedError;
 
   /// The pixel format asked to the server.
@@ -43,6 +46,7 @@ abstract class $RemoteFrameBufferIsolateInitMessageCopyWith<$Res> {
   @useResult
   $Res call(
       {String hostName,
+      bool localCursor,
       Option<String> password,
       RemoteFrameBufferPixelFormat pixelFormat,
       int port,
@@ -64,6 +68,7 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
   @override
   $Res call({
     Object? hostName = null,
+    Object? localCursor = null,
     Object? password = null,
     Object? pixelFormat = null,
     Object? port = null,
@@ -74,6 +79,10 @@ class _$RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res,
           ? _value.hostName
           : hostName // ignore: cast_nullable_to_non_nullable
               as String,
+      localCursor: null == localCursor
+          ? _value.localCursor
+          : localCursor // ignore: cast_nullable_to_non_nullable
+              as bool,
       password: null == password
           ? _value.password
           : password // ignore: cast_nullable_to_non_nullable
@@ -105,6 +114,7 @@ abstract class _$$_RemoteFrameBufferIsolateInitMessageCopyWith<$Res>
   @useResult
   $Res call(
       {String hostName,
+      bool localCursor,
       Option<String> password,
       RemoteFrameBufferPixelFormat pixelFormat,
       int port,
@@ -125,6 +135,7 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
   @override
   $Res call({
     Object? hostName = null,
+    Object? localCursor = null,
     Object? password = null,
     Object? pixelFormat = null,
     Object? port = null,
@@ -135,6 +146,10 @@ class __$$_RemoteFrameBufferIsolateInitMessageCopyWithImpl<$Res>
           ? _value.hostName
           : hostName // ignore: cast_nullable_to_non_nullable
               as String,
+      localCursor: null == localCursor
+          ? _value.localCursor
+          : localCursor // ignore: cast_nullable_to_non_nullable
+              as bool,
       password: null == password
           ? _value.password
           : password // ignore: cast_nullable_to_non_nullable
@@ -162,6 +177,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
     implements _RemoteFrameBufferIsolateInitMessage {
   const _$_RemoteFrameBufferIsolateInitMessage(
       {required this.hostName,
+      required this.localCursor,
       required this.password,
       required this.pixelFormat,
       required this.port,
@@ -169,6 +185,10 @@ class _$_RemoteFrameBufferIsolateInitMessage
 
   @override
   final String hostName;
+
+  /// Whether the client announces the Cursor pseudo-encoding.
+  @override
+  final bool localCursor;
   @override
   final Option<String> password;
 
@@ -184,7 +204,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
 
   @override
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
-    return 'RemoteFrameBufferIsolateInitMessage(hostName: $hostName, password: $password, pixelFormat: $pixelFormat, port: $port, sendPort: $sendPort)';
+    return 'RemoteFrameBufferIsolateInitMessage(hostName: $hostName, localCursor: $localCursor, password: $password, pixelFormat: $pixelFormat, port: $port, sendPort: $sendPort)';
   }
 
   @override
@@ -193,6 +213,7 @@ class _$_RemoteFrameBufferIsolateInitMessage
     properties
       ..add(DiagnosticsProperty('type', 'RemoteFrameBufferIsolateInitMessage'))
       ..add(DiagnosticsProperty('hostName', hostName))
+      ..add(DiagnosticsProperty('localCursor', localCursor))
       ..add(DiagnosticsProperty('password', password))
       ..add(DiagnosticsProperty('pixelFormat', pixelFormat))
       ..add(DiagnosticsProperty('port', port))
@@ -206,6 +227,8 @@ class _$_RemoteFrameBufferIsolateInitMessage
             other is _$_RemoteFrameBufferIsolateInitMessage &&
             (identical(other.hostName, hostName) ||
                 other.hostName == hostName) &&
+            (identical(other.localCursor, localCursor) ||
+                other.localCursor == localCursor) &&
             (identical(other.password, password) ||
                 other.password == password) &&
             (identical(other.pixelFormat, pixelFormat) ||
@@ -217,7 +240,8 @@ class _$_RemoteFrameBufferIsolateInitMessage
 
   @override
   int get hashCode =>
-      Object.hash(runtimeType, hostName, password, pixelFormat, port, sendPort);
+      Object.hash(runtimeType, hostName, localCursor, password, pixelFormat,
+      port, sendPort);
 
   @JsonKey(ignore: true)
   @override
@@ -232,6 +256,7 @@ abstract class _RemoteFrameBufferIsolateInitMessage
     implements RemoteFrameBufferIsolateInitMessage {
   const factory _RemoteFrameBufferIsolateInitMessage(
           {required final String hostName,
+          required final bool localCursor,
           required final Option<String> password,
           required final RemoteFrameBufferPixelFormat pixelFormat,
           required final int port,
@@ -240,6 +265,10 @@ abstract class _RemoteFrameBufferIsolateInitMessage
 
   @override
   String get hostName;
+  @override
+
+  /// Whether the client announces the Cursor pseudo-encoding.
+  bool get localCursor;
   @override
   Option<String> get password;
   @override

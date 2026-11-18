@@ -12,6 +12,7 @@ import 'package:flutter_rfb/src/child_size_notifier_widget.dart';
 import 'package:flutter_rfb/src/extensions/logical_keyboard_key_extensions.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_client_isolate.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_isolate_messages.dart';
+import 'package:flutter_rfb/src/remote_frame_buffer_local_feedback.dart';
 import 'package:flutter_rfb/src/remote_frame_buffer_pointer_listener.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 import 'package:logging/logging.dart';
@@ -24,11 +25,14 @@ final Logger _logger = Logger('RemoteFrameBufferWidget');
 class RemoteFrameBufferWidget extends StatefulWidget {
   final Option<Widget> _connectingWidget;
   final String _hostName;
+  final bool _localCursor;
   final Option<void Function(Object error)> _onError;
   final Option<VoidCallback> _onFirstFrame;
   final Option<String> _password;
   final RemoteFrameBufferPixelFormat _pixelFormat;
   final int _port;
+  final bool _pressFeedback;
+  final Option<Color> _pressFeedbackColor;
   final bool _syncLocalClipboardToRemote;
 
   /// Immediately tries to establish a connection to a remote server at
@@ -45,29 +49,55 @@ class RemoteFrameBufferWidget extends StatefulWidget {
   /// [RemoteFrameBufferPixelFormat.rgb565] (16 bits, the default),
   /// [RemoteFrameBufferPixelFormat.bgr233] (8 bits, 64 colours, the least
   /// data) or [RemoteFrameBufferPixelFormat.bgra8888] (32 bits, full colour).
+  ///
+  /// With [localCursor] (the default), the server is asked for its cursor
+  /// shape (Cursor pseudo-encoding) instead of drawing it into the
+  /// framebuffer. The widget draws it at the mouse at each frame, without
+  /// waiting for the server, and hides the system cursor over the
+  /// framebuffer meanwhile. Nothing is drawn for touch input. A server
+  /// without the pseudo-encoding keeps drawing its cursor itself.
+  ///
+  /// With [pressFeedback] (the default), each press, mouse or touch, shows a
+  /// halo at once, fading out in a quarter of a second, before the server's
+  /// image arrives. It is drawn translucent in [pressFeedbackColor], the
+  /// theme's primary colour by default.
   RemoteFrameBufferWidget({
     super.key,
     final Widget? connectingWidget,
     required final String hostName,
+    final bool localCursor = true,
     final void Function(Object error)? onError,
     final VoidCallback? onFirstFrame,
     final String? password,
     final RemoteFrameBufferPixelFormat pixelFormat =
         RemoteFrameBufferPixelFormat.rgb565,
     final int port = 5900,
+    final bool pressFeedback = true,
+    final Color? pressFeedbackColor,
     final bool syncLocalClipboardToRemote = true,
   })  : _connectingWidget = optionOf(connectingWidget),
         _hostName = hostName,
+        _localCursor = localCursor,
         _onError = optionOf(onError),
         _onFirstFrame = optionOf(onFirstFrame),
         _password = optionOf(password),
         _pixelFormat = pixelFormat,
         _port = port,
+        _pressFeedback = pressFeedback,
+        _pressFeedbackColor = optionOf(pressFeedbackColor),
         _syncLocalClipboardToRemote = syncLocalClipboardToRemote;
+
+  /// Whether the cursor is drawn locally, passed to the RFB client.
+  @visibleForTesting
+  bool get localCursor => _localCursor;
 
   /// The pixel format asked to the server.
   @visibleForTesting
   RemoteFrameBufferPixelFormat get pixelFormat => _pixelFormat;
+
+  /// Whether a halo is shown at each press.
+  @visibleForTesting
+  bool get pressFeedback => _pressFeedback;
 
   @override
   State<RemoteFrameBufferWidget> createState() =>
@@ -77,6 +107,13 @@ class RemoteFrameBufferWidget extends StatefulWidget {
 @visibleForTesting
 class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
   Timer? _clipBoardMonitorTimer;
+
+  /// The last cursor shape received, once decoded.
+  Option<RemoteFrameBufferCursorImage> _cursor = none();
+
+  /// Bumped for each cursor received: an older decode finishing late is
+  /// dropped.
+  int _cursorGeneration = 0;
   Option<ByteData> _frameBuffer = none();
   Option<Image> _image = none();
 
@@ -110,6 +147,10 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
     _image.match(
       () {},
       (final Image image) => image.dispose(),
+    );
+    _cursor.match(
+      () {},
+      (final RemoteFrameBufferCursorImage cursor) => cursor.dispose(),
     );
     _isolate.match(
       () {},
@@ -145,17 +186,81 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
             final Size size,
             final Widget? child,
           ) =>
-              RemoteFrameBufferPointerListener(
+              _withLocalFeedback(
             image: image,
-            remoteFrameBufferWidgetSize: size,
-            sendPort: _isolateSendPort,
-            child: RawImage(
+            child: RemoteFrameBufferPointerListener(
               image: image,
-              fit: BoxFit.contain,
+              remoteFrameBufferWidgetSize: size,
+              sendPort: _isolateSendPort,
+              child: RawImage(
+                image: image,
+                fit: BoxFit.contain,
+              ),
             ),
           ),
         ),
       );
+
+  /// Wraps [child] with the local cursor and press feedback, when enabled.
+  Widget _withLocalFeedback({
+    required final Image image,
+    required final Widget child,
+  }) =>
+      !widget._localCursor && !widget._pressFeedback
+          ? child
+          : RemoteFrameBufferLocalFeedback(
+              cursor: widget._localCursor
+                  ? _cursor
+                  : none<RemoteFrameBufferCursorImage>(),
+              frameBufferHeight: image.height,
+              frameBufferWidth: image.width,
+              pressFeedback: widget._pressFeedback,
+              pressFeedbackColor: widget._pressFeedbackColor.getOrElse(
+                () => Theme.of(context).colorScheme.primary,
+              ),
+              child: child,
+            );
+
+  /// Decodes [cursor] into an [Image], then shows it.
+  void _updateCursor(final RemoteFrameBufferClientCursor cursor) {
+    final int generation = ++_cursorGeneration;
+    void show(final Option<Image> image) {
+      if (!mounted || generation != _cursorGeneration) {
+        image.match(() {}, (final Image image) => image.dispose());
+        return;
+      }
+      setState(() {
+        _cursor.match(
+          () {},
+          (final RemoteFrameBufferCursorImage old) => old.dispose(),
+        );
+        _cursor = some(
+          RemoteFrameBufferCursorImage(
+            image: image,
+            hotspotX: cursor.hotspotX,
+            hotspotY: cursor.hotspotY,
+          ),
+        );
+      });
+    }
+
+    if (!cursor.isVisible) {
+      show(none());
+      return;
+    }
+    decodeImageFromPixels(
+      Uint8List.fromList(
+        cursor.pixels.buffer.asUint8List(
+          cursor.pixels.offsetInBytes,
+          cursor.pixels.lengthInBytes,
+        ),
+      ),
+      cursor.width,
+      cursor.height,
+      PixelFormat.bgra8888,
+      (final Image image) => show(some(image)),
+    );
+  }
 
   /// Decodes the current [frameBuffer] into a new [Image].
   ///
@@ -275,6 +380,11 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
           'Received new update message with ${update.update.rectangles.length} rectangles',
         );
         _isolateSendPort = some(update.sendPort);
+        update.update.cursor.match(() {}, _updateCursor);
+        if (update.update.rectangles.isEmpty) {
+          // A cursor only: the framebuffer is unchanged.
+          return;
+        }
         if (_frameBuffer.isNone()) {
           _frameBuffer = some(
             ByteData(
@@ -294,6 +404,8 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
                     frameBufferWidth: update.frameBufferWidth,
                     rectangle: rectangle,
                   ),
+                  // Delivered in update.cursor by dart_rfb, never here.
+                  cursor: () async {},
                   raw: () async => (await updateFrameBuffer(
                     frameBuffer: frameBuffer,
                     frameBufferSize: Size(
@@ -366,6 +478,7 @@ class RemoteFrameBufferWidgetState extends State<RemoteFrameBufferWidget> {
         startRemoteFrameBufferClient,
         RemoteFrameBufferIsolateInitMessage(
           hostName: widget._hostName,
+          localCursor: widget._localCursor,
           password: widget._password,
           pixelFormat: widget._pixelFormat,
           port: widget._port,

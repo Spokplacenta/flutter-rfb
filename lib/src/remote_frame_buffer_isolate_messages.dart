@@ -13,6 +13,9 @@ class RemoteFrameBufferIsolateInitMessage
     with _$RemoteFrameBufferIsolateInitMessage {
   const factory RemoteFrameBufferIsolateInitMessage({
     required final String hostName,
+
+    /// Whether the client announces the Cursor pseudo-encoding.
+    required final bool localCursor,
     required final Option<String> password,
 
     /// The pixel format asked to the server.

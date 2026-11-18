@@ -56,6 +56,13 @@ class MyApp extends StatelessWidget {
 }
 ```
 
+### Options
+
+- `pixelFormat`: the pixel format asked to the server, `RemoteFrameBufferPixelFormat.rgb565` (16 bits) by default.
+- `localCursor` (default `true`): the cursor is drawn locally at the mouse, without waiting for the server, when the server supports the Cursor pseudo-encoding. Nothing is drawn for touch input.
+- `pressFeedback` (default `true`) and `pressFeedbackColor`: a halo shown at once at each press, fading out in 250 ms.
+- `syncLocalClipboardToRemote` (default `true`): push the local clipboard to the server.
+
 ## Learn More
 
 https://pub.dev/packages/dart_rfb
